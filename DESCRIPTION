@@ -1,6 +1,6 @@
 Package: fable
 Title: Forecasting Models for Tidy Time Series
-Version: 0.1.0
+Version: 0.1.1
 Description: Provides a collection of commonly used univariate and multivariate
     time series forecasting models including automatically selected exponential 
     smoothing (ETS) and autoregressive integrated moving average (ARIMA) models.
@@ -36,13 +36,13 @@ ByteCompile: true
 Encoding: UTF-8
 Language: en-GB
 LazyData: true
-RoxygenNote: 6.1.1
+RoxygenNote: 7.0.2
 NeedsCompilation: yes
-Packaged: 2019-09-16 09:21:55 UTC; mitchell
+Packaged: 2019-12-04 12:58:39 UTC; mitchell
 Author: Mitchell O'Hara-Wild [aut, cre],
   Rob Hyndman [aut],
   Earo Wang [aut],
   Gabriel Caceres [ctb] (NNETAR implementation)
 Maintainer: Mitchell O'Hara-Wild <mail@mitchelloharawild.com>
 Repository: CRAN
-Date/Publication: 2019-09-23 15:10:06 UTC
+Date/Publication: 2019-12-06 11:00:02 UTC

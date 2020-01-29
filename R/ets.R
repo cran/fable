@@ -135,7 +135,7 @@ specials_ets <- new_specials(
     }
 
     m <- get_frequencies(period, self$data, .auto = "smallest")
-    if (m <= 1 || NROW(self$data) <= m) {
+    if (m <= 1 || (NROW(self$data) <= m && self$stage %in% c("estimate", "refit"))) {
       method <- intersect("N", method)
     }
     if (m > 24) {
@@ -180,7 +180,8 @@ specials_ets <- new_specials(
 #' `"both"` (default) takes the intersection of these regions.
 #' @param ic The information criterion used in selecting the model.
 #' @param restrict If TRUE (default), the models with infinite variance will not
-#' be allowed.
+#' be allowed. These restricted model components are AMM, AAM, AMA, and MMA.
+#' 
 #' @param ... Other arguments
 #'
 #' @section Specials:
@@ -192,7 +193,7 @@ specials_ets <- new_specials(
 #' }
 #'
 #' \tabular{ll}{
-#'   `method`     \tab The form of the error term: either additive ("A") or multiplicative ("M").
+#'   `method`     \tab The form of the error term: either additive ("A") or multiplicative ("M"). If the error is multiplicative, the data must be non-negative.
 #' }
 #' }
 #'
@@ -306,7 +307,7 @@ forecast.ETS <- function(object, new_data, specials = NULL, simulate = FALSE, bo
       as.integer(object$spec$period),
       as.integer(switch(trendtype, "N" = 0, "A" = 1, "M" = 2)),
       as.integer(switch(seasontype, "N" = 0, "A" = 1, "M" = 2)),
-      as.double(ifelse(damped, object$par[["estimate"]][[object$term == "phi"]], 1)),
+      as.double(ifelse(damped, object$par[["estimate"]][object$par[["term"]] == "phi"], 1)),
       as.integer(NROW(new_data)),
       as.double(numeric(NROW(new_data))),
       PACKAGE = "fable"

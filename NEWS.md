@@ -1,3 +1,16 @@
+# fable 0.1.2
+
+## Improvements
+* Added `CROSTON()` for Croston's method of intermittent demand forecasting.
+* Documentation improvements
+
+## Bug fixes
+
+* Fixed NNETAR & VAR handling of missing values (#215).
+* Fix ETS forecasting with forecast horizons less than the seasonal period (#219).
+* Fixed season() special for non-seasonally based time indices (#220)
+* Fix issue with simulation forecasting from damped ETS models.
+
 # fable 0.1.1
 
 ## Improvements

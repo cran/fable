@@ -182,10 +182,13 @@ train_arima <- function(.data, specials,  ic = "aicc",
     (new[[ic]]%||%Inf)
   }
   
+  mostly_specified <- length(p) + length(d) + length(q) + length(P) + length(D) + length(Q) == 6
+  mostly_specified_msg <- "It looks like you're trying to fully specify your ARIMA model but have not said if a constant should be included.\nYou can include a constant using `ARIMA(y~1)` to the formula or exclude it by adding `ARIMA(y~0)`."
   model_opts <- expand.grid(p = p, d = d, q = q, P = P, D = D, Q = Q, constant = constant)
   if(NROW(model_opts) > 1){
     model_opts <- filter(model_opts, !!enexpr(order_constraint), (d + D < 2) | !constant)
     if(NROW(model_opts) == 0){
+      if(mostly_specified) warn(mostly_specified_msg)
       abort("There are no ARIMA models to choose from after imposing the `order_constraint`, please consider allowing more models.")
     }
     wrap_arima <- possibly(quietly(stats::arima), NULL)
@@ -267,7 +270,8 @@ This is generally discouraged, consider removing the constant or reducing the nu
   }
   
   if(is.null(best)){
-    abort("Could not find an appropriate ARIMA model.")
+    if(mostly_specified) warn(mostly_specified_msg)
+    abort("Could not find an appropriate ARIMA model.\nThis is likely because automatic selection does not select models with characteristic roots that may be numerically unstable.\nFor more details, refer to https://otexts.com/fpp3/arima-r.html#plotting-the-characteristic-roots")
   }
   
   # Compute ARMA roots
@@ -292,7 +296,7 @@ This is generally discouraged, consider removing the constant or reducing the nu
     xreg <- cbind(xreg, constant = arima_constant(length(y), d, D, period))
   }
   if (!is.null(xreg)) {
-    reg_resid - xreg %*% as.matrix(best$coef[(sum(best$arma[1:4]) + 1):length(best$coef)])
+    reg_resid <- reg_resid - xreg %*% as.matrix(best$coef[(sum(best$arma[1:4]) + 1):length(best$coef)])
   }
   
   # Output model
@@ -402,6 +406,22 @@ specials_arima <- new_specials(
 #' selection of `d` and `D`. See [`unitroot_options()`] for more details.
 #' @param ... Further arguments for [`stats::arima()`]
 #' 
+#' @section Parameterisation:
+#' 
+#' The fable `ARIMA()` function uses an alternate parameterisation of constants
+#' to [`stats::arima()`] and [`forecast::Arima()`]. While the parameterisations
+#' are equivalent, the coefficients for the constant/mean will differ.
+#' 
+#' In fable, the parameterisation used is:
+#' 
+#' \deqn{(1-\phi_1B - \cdots - \phi_p B^p)(1-B)^d y_t = c + (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t}{(1-φ₁B - ⋯ - φₚ Bᵖ)(1-B)ᵈ yₜ = c + (1 + θ₁ B + ⋯ + θ_q B^q)εₜ}
+#' 
+#' In stats and forecast, an ARIMA model is parameterised as:
+#' 
+#' \deqn{(1-\phi_1B - \cdots - \phi_p B^p)(y_t' - \mu) = (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t}{(1-φ₁B - ⋯ - φₚ Bᵖ)(1-B)ᵈ (yₜ - μ tᵈ/d!) = (1 + θ₁ B + ⋯ + θ_q B^q)εₜ}
+#' 
+#' where \eqn{\mu} is the mean of \eqn{(1-B)^d y_t}{(1-B)ᵈ yₜ} and \eqn{c = \mu(1-\phi_1 - \cdots - \phi_p )}{c = μ(1-φ₁ - ⋯ - φₚ )}.
+#' 
 #' @section Specials:
 #' 
 #' \subsection{pdq}{
@@ -461,7 +481,8 @@ specials_arima <- new_specials(
 #' # Manual ARIMA specification
 #' USAccDeaths %>% 
 #'   as_tsibble %>% 
-#'   model(arima = ARIMA(log(value) ~ pdq(0,1,1) + PDQ(0,1,1)))
+#'   model(arima = ARIMA(log(value) ~ 0 + pdq(0,1,1) + PDQ(0,1,1))) %>% 
+#'   report()
 #' 
 #' # Automatic ARIMA specification
 #' library(tsibble)

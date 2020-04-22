@@ -59,10 +59,6 @@ fc <- fit %>%
   forecast(h = "5 years")
 fc
 
-## ----dist-hilo----------------------------------------------------------------
-fc %>%
-  mutate(interval = hilo(.distribution, 80))
-
 ## ----fc-hilo------------------------------------------------------------------
 fc %>%
   hilo(level = c(80, 95))
@@ -71,7 +67,7 @@ fc %>%
 #  library(tidyr)
 #  fc %>%
 #    mutate(interval = hilo(.distribution, 80)) %>%
-#    unnest_tsibble(interval)
+#    unpack_hilo(interval)
 
 ## ----fc-plot, fig.height=10---------------------------------------------------
 fc %>%

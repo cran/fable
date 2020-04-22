@@ -9,12 +9,14 @@ backtransformations
 backtransforming
 com
 dfrac
+eg
 fabletools
 fourier
 fpp
 Grose
 Koehler
 Kourentzes
+kpss
 KPSS
 lifecycle
 mable
@@ -22,6 +24,7 @@ Md
 MMA
 NNAR
 NNETAR
+nonseasonal
 org
 otexts
 parameterisations

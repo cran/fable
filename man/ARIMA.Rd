@@ -28,7 +28,7 @@ ARIMA(
 \item{approximation}{Should CSS (conditional sum of squares) be used during model selection? The default (\code{NULL}) will use the approximation if there are more than 150 observations or if the seasonal period is greater than 12.}
 
 \item{order_constraint}{A logical predicate on the orders of \code{p}, \code{d}, \code{q},
-\code{P}, \code{D} and \code{Q} to consider in the search.}
+\code{P}, \code{D} and \code{Q} to consider in the search. See "Specials" for the meaning of these terms.}
 
 \item{unitroot_spec}{A specification of unit root tests to use in the
 selection of \code{d} and \code{D}. See \code{\link[=unitroot_options]{unitroot_options()}} for more details.}
@@ -53,49 +53,54 @@ are equivalent, the coefficients for the constant/mean will differ.
 
 In fable, the parameterisation used is:
 
-\deqn{(1-\phi_1B - \cdots - \phi_p B^p)(1-B)^d y_t = c + (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t}{(1-φ₁B - ⋯ - φₚ Bᵖ)(1-B)ᵈ yₜ = c + (1 + θ₁ B + ⋯ + θ_q B^q)εₜ}
+\deqn{(1-\phi_1B - \cdots - \phi_p B^p)(1-B)^d y_t = c + (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t}
 
 In stats and forecast, an ARIMA model is parameterised as:
 
-\deqn{(1-\phi_1B - \cdots - \phi_p B^p)(y_t' - \mu) = (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t}{(1-φ₁B - ⋯ - φₚ Bᵖ)(1-B)ᵈ (yₜ - μ tᵈ/d!) = (1 + θ₁ B + ⋯ + θ_q B^q)εₜ}
+\deqn{(1-\phi_1B - \cdots - \phi_p B^p)(y_t' - \mu) = (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t}
 
-where \eqn{\mu} is the mean of \eqn{(1-B)^d y_t}{(1-B)ᵈ yₜ} and \eqn{c = \mu(1-\phi_1 - \cdots - \phi_p )}{c = μ(1-φ₁ - ⋯ - φₚ )}.
-
+where \eqn{\mu} is the mean of \eqn{(1-B)^d y_t} and \eqn{c = \mu(1-\phi_1 - \cdots - \phi_p )}.
 }
 
 \section{Specials}{
 
 
+The \emph{specials} define the space over which \code{ARIMA} will search for the model that best fits the data. If the RHS of \code{formula} is left blank, the default search space is given by \code{pdq() + PDQ()}: that is, a model with candidate seasonal and nonseasonal terms, but no exogenous regressors. Note that a seasonal model requires at least 2 full seasons' worth of data; if this is not available, \code{ARIMA} will revert to a nonseasonal model with a warning.
+
+To specify a model fully (avoid automatic selection), the intercept and \code{pdq()/PDQ()} values must be specified: for example \code{formula = response ~ 1 + pdq(1, 1, 1) + PDQ(1, 0, 0)}.
+
 \subsection{pdq}{
 The \code{pdq} special is used to specify non-seasonal components of the model.
 \preformatted{
 pdq(p = 0:5, d = 0:2, q = 0:5,
-    p_init = 2, q_init = 2)
+    p_init = 2, q_init = 2, fixed = list())
 }
 
 \tabular{ll}{
-\code{p}        \tab The order of the non-seasonal auto-regressive (AR) terms. If multiple values are provided, the one which minimises \code{ic} will be chosen. \cr
-\code{d}        \tab The order of integration for non-seasonal differencing. If multiple values are provided, one of the values will be selected via repeated KPSS tests. \cr
-\code{q}        \tab The order of the non-seasonal moving average (MA) terms. If multiple values are provided, the one which minimises \code{ic} will be chosen. \cr
-\code{p_init}  \tab If \code{stepwise = TRUE}, \code{p_init} provides the initial value for \code{p} for the stepwise search procedure. \cr
-\code{q_init}  \tab If \code{stepwise = TRUE}, \code{q_init} provides the initial value for \code{q} for the stepwise search procedure.
+\code{p}      \tab The order of the non-seasonal auto-regressive (AR) terms. If multiple values are provided, the one which minimises \code{ic} will be chosen. \cr
+\code{d}      \tab The order of integration for non-seasonal differencing. If multiple values are provided, one of the values will be selected via repeated KPSS tests. \cr
+\code{q}      \tab The order of the non-seasonal moving average (MA) terms. If multiple values are provided, the one which minimises \code{ic} will be chosen. \cr
+\code{p_init} \tab If \code{stepwise = TRUE}, \code{p_init} provides the initial value for \code{p} for the stepwise search procedure. \cr
+\code{q_init} \tab If \code{stepwise = TRUE}, \code{q_init} provides the initial value for \code{q} for the stepwise search procedure. \cr
+\code{fixed}  \tab A named list of fixed parameters for coefficients. The names identify the coefficient, beginning with either \code{ar} or \code{ma}, and then followed by the lag order. For example, \code{fixed = list(ar1 = 0.3, ma2 = 0)}.
 }
 }
 
 \subsection{PDQ}{
-The \code{PDQ} special is used to specify seasonal components of the model.
+The \code{PDQ} special is used to specify seasonal components of the model. To force a nonseasonal fit, specify \code{PDQ(0, 0, 0)} in the RHS of the model formula. Note that simply omitting \code{PDQ} from the formula will \emph{not} result in a nonseasonal fit.
 \preformatted{
 PDQ(P = 0:2, D = 0:1, Q = 0:2, period = NULL,
-    P_init = 1, Q_init = 1)
+    P_init = 1, Q_init = 1, fixed = list())
 }
 
 \tabular{ll}{
-\code{P}        \tab The order of the seasonal auto-regressive (SAR) terms. If multiple values are provided, the one which minimises \code{ic} will be chosen. \cr
-\code{D}        \tab The order of integration for seasonal differencing. If multiple values are provided, one of the values will be selected via repeated heuristic tests (based on strength of seasonality from an STL decomposition). \cr
-\code{Q}        \tab The order of the seasonal moving average (SMA) terms. If multiple values are provided, the one which minimises \code{ic} will be chosen. \cr
-\code{period}   \tab The periodic nature of the seasonality. This can be either a number indicating the number of observations in each seasonal period, or text to indicate the duration of the seasonal window (for example, annual seasonality would be "1 year").  \cr
-\code{P_init}  \tab If \code{stepwise = TRUE}, \code{P_init} provides the initial value for \code{P} for the stepwise search procedure. \cr
-\code{Q_init}  \tab If \code{stepwise = TRUE}, \code{Q_init} provides the initial value for \code{Q} for the stepwise search procedure.
+\code{P}      \tab The order of the seasonal auto-regressive (SAR) terms. If multiple values are provided, the one which minimises \code{ic} will be chosen. \cr
+\code{D}      \tab The order of integration for seasonal differencing. If multiple values are provided, one of the values will be selected via repeated heuristic tests (based on strength of seasonality from an STL decomposition). \cr
+\code{Q}      \tab The order of the seasonal moving average (SMA) terms. If multiple values are provided, the one which minimises \code{ic} will be chosen. \cr
+\code{period} \tab The periodic nature of the seasonality. This can be either a number indicating the number of observations in each seasonal period, or text to indicate the duration of the seasonal window (for example, annual seasonality would be "1 year").  \cr
+\code{P_init} \tab If \code{stepwise = TRUE}, \code{P_init} provides the initial value for \code{P} for the stepwise search procedure. \cr
+\code{Q_init} \tab If \code{stepwise = TRUE}, \code{Q_init} provides the initial value for \code{Q} for the stepwise search procedure. \cr
+\code{fixed}  \tab A named list of fixed parameters for coefficients. The names identify the coefficient, beginning with either \code{sar} or \code{sma}, and then followed by the lag order. For example, \code{fixed = list(sar1 = 0.1)}.
 }
 }
 
@@ -105,29 +110,29 @@ Exogenous regressors can be included in an ARIMA model without explicitly using 
 The inclusion of a constant in the model follows the similar rules to \code{\link[stats:lm]{stats::lm()}}, where including \code{1} will add a constant and \code{0} or \code{-1} will remove the constant. If left out, the inclusion of a constant will be determined by minimising \code{ic}.
 
 \preformatted{
-xreg(...)
+xreg(..., fixed = list())
 }
 
 \tabular{ll}{
-\code{...}      \tab Bare expressions for the exogenous regressors (such as \code{log(x)})
+\code{...}      \tab Bare expressions for the exogenous regressors (such as \code{log(x)})\cr
+\code{fixed}    \tab A named list of fixed parameters for coefficients. The names identify the coefficient, and should match the name of the regressor. For example, \code{fixed = list(constant = 20)}.
 }
 }
 }
 
 \examples{
 # Manual ARIMA specification
-USAccDeaths \%>\% 
-  as_tsibble \%>\% 
-  model(arima = ARIMA(log(value) ~ 0 + pdq(0,1,1) + PDQ(0,1,1))) \%>\% 
+USAccDeaths \%>\%
+  as_tsibble() \%>\%
+  model(arima = ARIMA(log(value) ~ 0 + pdq(0, 1, 1) + PDQ(0, 1, 1))) \%>\%
   report()
 
 # Automatic ARIMA specification
 library(tsibble)
 library(dplyr)
-tsibbledata::global_economy \%>\% 
+tsibbledata::global_economy \%>\%
   filter(Country == "Australia") \%>\%
   model(ARIMA(log(GDP) ~ Population))
-
 }
 \seealso{
 \href{https://otexts.com/fpp3/arima.html}{Forecasting: Principles and Practices, ARIMA models (chapter 9)}

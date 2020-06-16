@@ -1,9 +1,9 @@
-globalVariables(c("p", "P", "q", "Q"))
+globalVariables(c("p", "P", "d", "D", "q", "Q", "constant"))
 
 #' @importFrom stats approx lm ts
 train_arima <- function(.data, specials, ic = "aicc",
                         stepwise = TRUE, greedy = TRUE, approximation = NULL,
-                        order_constraint = p + q + P + Q <= 6,
+                        order_constraint = p + q + P + Q <= 6 & (!constant | d + D < 2),
                         unitroot_spec = unitroot_options(),
                         fixed = NULL, ...) {
   if (length(measured_vars(.data)) > 1) {
@@ -26,10 +26,6 @@ train_arima <- function(.data, specials, ic = "aicc",
     abort("All observations are missing, a model cannot be estimated without data.")
   }
 
-  if (is.null(approximation)) {
-    approximation <- (length(x) > 150) || (period > 12)
-  }
-
   # Get xreg
   constant <- specials$xreg[[1]]$constant %||% c(TRUE, FALSE)
   xreg <- specials$xreg[[1]]$xreg
@@ -46,7 +42,7 @@ train_arima <- function(.data, specials, ic = "aicc",
       # Ignore fixed coefficients for xreg
       bad_regressors <- bad_regressors[!(colnames(xreg_c)[bad_regressors] %in% union(names(fixed), names(specials$xreg[[1]]$fixed)))]
       # Offset for inclusion of intercept
-      bad_regressors <- bad_regressors - 1
+      bad_regressors <- bad_regressors - all(constant)
       
       # Remove deficient regressors
       if(!is_empty(bad_regressors)){
@@ -123,19 +119,6 @@ train_arima <- function(.data, specials, ic = "aicc",
     warn("Having more than one seasonal differences is not recommended. Please consider using only one seasonal difference.")
   } else if (PDQ$D + pdq$d > 2) {
     warn("Having 3 or more differencing operations is not recommended. Please consider reducing the total number of differences.")
-  }
-
-  if (approximation) {
-    method <- "CSS"
-    offset <- with(
-      stats::arima(y,
-        order = c(0, pdq$d, 0), xreg = xreg,
-        include.mean = all(constant)
-      ),
-      -2 * loglik - NROW(data) * log(sigma2)
-    )
-  } else {
-    method <- "CSS-ML"
   }
 
   # Find best model
@@ -216,8 +199,25 @@ train_arima <- function(.data, specials, ic = "aicc",
   mostly_specified <- length(pdq$p) + length(pdq$d) + length(pdq$q) + length(PDQ$P) + length(PDQ$D) + length(PDQ$Q) == 6
   mostly_specified_msg <- "It looks like you're trying to fully specify your ARIMA model but have not said if a constant should be included.\nYou can include a constant using `ARIMA(y~1)` to the formula or exclude it by adding `ARIMA(y~0)`."
   model_opts <- expand.grid(p = pdq$p, d = pdq$d, q = pdq$q, P = PDQ$P, D = PDQ$D, Q = PDQ$Q, constant = constant)
+  
+  if (is.null(approximation)) {
+    approximation <- ((length(x) > 150) || (period > 12)) && nrow(model_opts) > 1
+  }
+  if (approximation) {
+    method <- "CSS"
+    offset <- with(
+      stats::arima(y,
+                   order = c(0, pdq$d, 0), xreg = xreg,
+                   include.mean = all(constant)
+      ),
+      -2 * loglik - NROW(data) * log(sigma2)
+    )
+  } else {
+    method <- "CSS-ML"
+  }
+  
   if (NROW(model_opts) > 1) {
-    model_opts <- filter(model_opts, !!enexpr(order_constraint), (pdq$d + PDQ$D < 2) | !constant)
+    model_opts <- filter(model_opts, !!enexpr(order_constraint))
     if (NROW(model_opts) == 0) {
       if (mostly_specified) warn(mostly_specified_msg)
       abort("There are no ARIMA models to choose from after imposing the `order_constraint`, please consider allowing more models.")
@@ -386,7 +386,9 @@ specials_arima <- new_specials(
                  P_init = 1, Q_init = 1,
                  fixed = list()) {
     period <- get_frequencies(period, self$data, .auto = "smallest")
-    if (period == 1) {
+    if (period < 1) {
+      abort("The seasonal period must be greater or equal to 1.")
+    } else if (period == 1) {
       # Not seasonal
       P <- 0
       D <- 0
@@ -453,7 +455,8 @@ specials_arima <- new_specials(
 #' @param greedy Should the stepwise search move to the next best option immediately?
 #' @param approximation Should CSS (conditional sum of squares) be used during model selection? The default (`NULL`) will use the approximation if there are more than 150 observations or if the seasonal period is greater than 12.
 #' @param order_constraint A logical predicate on the orders of `p`, `d`, `q`,
-#' `P`, `D` and `Q` to consider in the search. See "Specials" for the meaning of these terms.
+#' `P`, `D`, `Q` and `constant` to consider in the search. See "Specials" for 
+#' the meaning of these terms.
 #' @param unitroot_spec A specification of unit root tests to use in the
 #' selection of `d` and `D`. See [`unitroot_options()`] for more details.
 #' @param ... Further arguments for [`stats::arima()`]
@@ -552,7 +555,8 @@ specials_arima <- new_specials(
 #' @importFrom stats model.matrix
 #' @export
 ARIMA <- function(formula, ic = c("aicc", "aic", "bic"), stepwise = TRUE, greedy = TRUE,
-                  approximation = NULL, order_constraint = p + q + P + Q <= 6,
+                  approximation = NULL,
+                  order_constraint = p + q + P + Q <= 6 & (!constant | d + D < 2),
                   unitroot_spec = unitroot_options(), ...) {
   ic <- match.arg(ic)
   arima_model <- new_model_class("ARIMA",
@@ -701,9 +705,7 @@ forecast.ARIMA <- function(object, new_data = NULL, specials = NULL,
     sim <- map(seq_len(times), function(x) generate(object, new_data, specials, bootstrap = TRUE)[[".sim"]]) %>%
       transpose() %>%
       map(as.numeric)
-    return(
-      construct_fc(map_dbl(sim, mean), map_dbl(sim, stats::sd), dist_sim(sim))
-    )
+    return(distributional::dist_sample(sim))
   }
   
   xreg <- specials$xreg[[1]]$xreg
@@ -736,7 +738,7 @@ forecast.ARIMA <- function(object, new_data = NULL, specials = NULL,
   fc$pred <- as.numeric(fc$pred)
   fc$se <- as.numeric(fc$se)
   # Output forecasts
-  construct_fc(fc$pred, fc$se, dist_normal(fc$pred, fc$se))
+  distributional::dist_normal(fc$pred, fc$se)
 }
 
 #' @inherit generate.ETS

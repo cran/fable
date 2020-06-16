@@ -91,7 +91,7 @@ train_ets <- function(.data, specials, opt_crit,
         ),
       fit = tibble(
         sigma2 = sum(best$residuals^2, na.rm = TRUE) / (length(y) - length(best$par)),
-        log_ik = best$loglik, AIC = best$aic, AICc = best$aicc, BIC = best$bic,
+        log_lik = best$loglik, AIC = best$aic, AICc = best$aicc, BIC = best$bic,
         MSE = best$mse, AMSE = best$amse, MAE = best$mae
       ),
       states = tsibble(
@@ -334,7 +334,7 @@ forecast.ETS <- function(object, new_data, specials = NULL, simulate = FALSE, bo
       PACKAGE = "fable"
     )[[7]]
 
-    construct_fc(pred, map_dbl(sim, stats::sd), dist_sim(sim))
+    distributional::dist_sample(sim)
   }
   else {
     fc <- fc_class(
@@ -343,7 +343,7 @@ forecast.ETS <- function(object, new_data, specials = NULL, simulate = FALSE, bo
       trendtype, seasontype, damped, object$spec$period, object$fit$sigma2,
       set_names(object$par$estimate, object$par$term)
     )
-    construct_fc(fc$mu, sqrt(fc$var), dist_normal(fc$mu, sqrt(fc$var)))
+    distributional::dist_normal(fc$mu, sqrt(fc$var))
   }
 }
 
@@ -594,7 +594,7 @@ components.ETS <- function(object, ...) {
       season = rev(as.numeric(object$states[1, paste0("s", seq_len(m - 1) + 1)])),
       index = !!idx
     )
-    out <- rbind(seasonal_init, out)
+    out <- dplyr::bind_rows(seasonal_init, out)
     seasonalities <- list(season = list(period = m, base = NA_real_))
   }
   else {

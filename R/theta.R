@@ -27,7 +27,7 @@ train_theta <- function(.data, specials, ...) {
   # Seasonal decomposition
   if (m > 1L) {
     dcmp <- stats::decompose(y, type = specials$season[[1]]$method)
-    if (any(abs(dcmp$seasonal) < 1e-10)) {
+    if (any(abs(dcmp$seasonal) < 1e-4)) {
       warning("Seasonal indexes equal to zero. Using non-seasonal Theta method")
     } else {
       y_sa <- if(dcmp$type == "additive") dcmp$x - dcmp$seasonal else dcmp$x / dcmp$seasonal
@@ -58,7 +58,7 @@ train_theta <- function(.data, specials, ...) {
       lT = ses$states[n+1,1],
       drift = drift,
       sigma2 = sigma2,
-      dcmp = dcmp$type,
+      dcmp = specials$season[[1]]$method,
       season = if(m > 1L) dcmp$seasonal[seq(n-m+1, n)] else NULL
     ),
     class = "fable_theta"
@@ -95,7 +95,7 @@ specials_theta <- new_specials(
 #' \subsection{season}{
 #' The `season` special is used to specify the parameters of the seasonal adjustment via classical decomposition.
 #' \preformatted{
-#' window(period = NULL, method = c("multiplicative", "additive"))
+#' season(period = NULL, method = c("multiplicative", "additive"))
 #' }
 #'
 #' \tabular{ll}{
@@ -114,6 +114,22 @@ specials_theta <- new_specials(
 #' Hyndman, R.J., and Billah, B. (2003) Unmasking the Theta method.
 #' \emph{International J. Forecasting}, \bold{19}, 287-290.
 #' 
+#' @examples
+#' # Theta method with transform
+#' deaths <- as_tsibble(USAccDeaths)
+#' deaths %>%
+#'   model(theta = THETA(log(value))) %>%
+#'   forecast(h = "4 years") %>%
+#'   autoplot(deaths)
+#' 
+#' # Compare seasonal specifications
+#' library(tsibbledata)
+#' library(dplyr)
+#' aus_retail %>%
+#'   filter(Industry == "Clothing retailing") %>%
+#'   model(theta_multiplicative = THETA(Turnover ~ season(method = "multiplicative")),
+#'         theta_additive = THETA(Turnover ~ season(method = "additive"))) %>%
+#'   accuracy()
 #' @author Rob J Hyndman, Mitchell O'Hara-Wild
 #' @export
 THETA <- function(formula, ...) {

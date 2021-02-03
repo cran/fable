@@ -1,10 +1,11 @@
 globalVariables(c("p", "P", "d", "D", "q", "Q", "constant"))
 
 #' @importFrom stats approx lm ts
-train_arima <- function(.data, specials, ic = "aicc",
+train_arima <- function(.data, specials, 
+                        ic = "aicc", selection_metric = function(x) x[[ic]],
                         stepwise = TRUE, greedy = TRUE, approximation = NULL,
-                        order_constraint = p + q + P + Q <= 6 & (!constant | d + D < 2),
-                        unitroot_spec = unitroot_options(),
+                        order_constraint = p + q + P + Q <= 6 & (constant + d + D <= 2),
+                        unitroot_spec = unitroot_options(), trace = FALSE,
                         fixed = NULL, ...) {
   if (length(measured_vars(.data)) > 1) {
     abort("Only univariate responses are supported by ARIMA.")
@@ -116,13 +117,14 @@ train_arima <- function(.data, specials, ic = "aicc",
   if (length(PDQ$D) != 1) abort("Could not find appropriate number of seasonal differences.")
   if (length(pdq$d) != 1) abort("Could not find appropriate number of non-seasonal differences.")
   if (PDQ$D >= 2) {
-    warn("Having more than one seasonal differences is not recommended. Please consider using only one seasonal difference.")
+    warn("Having more than one seasonal difference is not recommended. Please consider using only one seasonal difference.")
   } else if (PDQ$D + pdq$d > 2) {
     warn("Having 3 or more differencing operations is not recommended. Please consider reducing the total number of differences.")
   }
 
   # Find best model
   best <- NULL
+  sm_best <- Inf
   compare_arima <- function(p, d, q, P, D, Q, constant) {
     if (constant) {
       intercept <- arima_constant(length(y), d, D, period)
@@ -190,13 +192,23 @@ train_arima <- function(.data, specials, ic = "aicc",
         } # Don't like this model
       }
     }
-    if ((new[[ic]] %||% Inf) < (best[[ic]] %||% Inf)) {
-      best <<- new
+    if(inherits(new, "Arima")){
+      sm <- selection_metric(new) %||% Inf
+      if (sm < sm_best || is.null(best)) {
+        best <<- new
+        sm_best <<- sm
+      }
+    } else {
+      sm <- Inf
     }
-    (new[[ic]] %||% Inf)
+    if(trace) {
+      cat(sprintf("ARIMA(%i,%i,%i)(%i,%i,%i)[%i]%s\t%f\n",
+                  p,d,q,P,D,Q,period,if(constant) "+c" else "  ",sm))
+    }
+    sm
   }
 
-  mostly_specified <- length(pdq$p) + length(pdq$d) + length(pdq$q) + length(PDQ$P) + length(PDQ$D) + length(PDQ$Q) == 6
+  mostly_specified <- length(constant) == 2 && length(pdq$p) + length(pdq$d) + length(pdq$q) + length(PDQ$P) + length(PDQ$D) + length(PDQ$Q) == 6
   mostly_specified_msg <- "It looks like you're trying to fully specify your ARIMA model but have not said if a constant should be included.\nYou can include a constant using `ARIMA(y~1)` to the formula or exclude it by adding `ARIMA(y~0)`."
   model_opts <- expand.grid(p = pdq$p, d = pdq$d, q = pdq$q, P = PDQ$P, D = PDQ$D, Q = PDQ$Q, constant = constant)
   
@@ -246,9 +258,13 @@ This is generally discouraged, consider removing the constant or reducing the nu
       ar = c(max(pdq$p) > 0, pdq$d, 0, max(PDQ$P) > 0, PDQ$D, 0, constant[1]),
       ma = c(0, pdq$d, max(pdq$q) > 0, 0, PDQ$D, max(PDQ$Q) > 0, constant[1])
     )
-    step_order <- stats::na.omit(match(initial_opts, lapply(split(model_opts, seq_len(NROW(model_opts))), as.numeric)))
+    step_order <- unique(stats::na.omit(match(initial_opts, lapply(split(model_opts, seq_len(NROW(model_opts))), as.numeric))))
     initial <- TRUE
 
+    if(trace) {
+      cat("Model specification\t\tSelection metric\n")
+    }
+    
     # Stepwise search
     k <- 0
     while (NROW(model_opts[step_order, ]) > 0 && k < 94) {
@@ -289,8 +305,13 @@ This is generally discouraged, consider removing the constant or reducing the nu
   }
 
   if (approximation && !is.null(best$arma)) {
+    if(trace) {
+      cat("\n--- Re-estimating best models without approximation ---\n\n")
+    }
+    
     method <- "CSS-ML"
     best <- NULL
+    sm_best <- Inf
     step_order <- order(est_ic)[seq_len(sum(!is.na(est_ic)))]
     est_ic <- rep_len(Inf, length(est_ic)) # Ignore all approximate models until re-estimated
     for (mod_spec in step_order)
@@ -340,11 +361,12 @@ This is generally discouraged, consider removing the constant or reducing the nu
   best_spec[["period"]] <- period
   structure(
     list(
-      par = tibble(
-        term = names(fit_coef) %||% chr(), estimate = unname(fit_coef) %||% dbl(),
-        std.error = fit_se %||% rep(NA, length(fit_coef))
-      ) %>%
+      par = 
         mutate(
+          tibble(
+            term = names(fit_coef) %||% chr(), estimate = unname(fit_coef) %||% dbl(),
+            std.error = fit_se %||% rep(NA, length(fit_coef))
+          ),
           statistic = !!sym("estimate") / !!sym("std.error"),
           p.value = 2 * stats::pt(abs(!!sym("statistic")),
             best$nobs,
@@ -354,7 +376,7 @@ This is generally discouraged, consider removing the constant or reducing the nu
       est = tibble(
         .fitted = as.numeric(y - best$residuals),
         .resid = as.numeric(best$residuals),
-        .regression_resid = reg_resid
+        .regression_resid = as.numeric(reg_resid)
       ),
       fit = tibble(
         sigma2 = best$sigma2,
@@ -387,7 +409,7 @@ specials_arima <- new_specials(
                  fixed = list()) {
     period <- get_frequencies(period, self$data, .auto = "smallest")
     if (period < 1) {
-      abort("The seasonal period must be greater or equal to 1.")
+      abort("The seasonal period must be greater than or equal to 1.")
     } else if (period == 1) {
       # Not seasonal
       P <- 0
@@ -443,7 +465,7 @@ specials_arima <- new_specials(
 #' Estimate an ARIMA model
 #'
 #' Searches through the model space specified in the specials to identify the
-#' best ARIMA model which has lowest AIC, AICc or BIC value. It is implemented
+#' best ARIMA model, with the lowest AIC, AICc or BIC value. It is implemented
 #' using [`stats::arima()`] and allows ARIMA models to be used in the fable
 #' framework.
 #'
@@ -451,14 +473,20 @@ specials_arima <- new_specials(
 #'
 #' @param formula Model specification (see "Specials" section).
 #' @param ic The information criterion used in selecting the model.
-#' @param stepwise Should stepwise be used?
+#' @param selection_metric A function used to compute a metric from an `Arima`
+#' object which is minimised to select the best model.
+#' @param stepwise Should stepwise be used? (Stepwise can be much faster)
 #' @param greedy Should the stepwise search move to the next best option immediately?
-#' @param approximation Should CSS (conditional sum of squares) be used during model selection? The default (`NULL`) will use the approximation if there are more than 150 observations or if the seasonal period is greater than 12.
+#' @param approximation Should CSS (conditional sum of squares) be used during model 
+#' selection? The default (`NULL`) will use the approximation if there are more than 
+#' 150 observations or if the seasonal period is greater than 12.
 #' @param order_constraint A logical predicate on the orders of `p`, `d`, `q`,
 #' `P`, `D`, `Q` and `constant` to consider in the search. See "Specials" for 
 #' the meaning of these terms.
 #' @param unitroot_spec A specification of unit root tests to use in the
 #' selection of `d` and `D`. See [`unitroot_options()`] for more details.
+#' @param trace If `TRUE`, the selection_metric of estimated models in the 
+#' selection procedure will be outputted to the console. 
 #' @param ... Further arguments for [`stats::arima()`]
 #'
 #' @section Parameterisation:
@@ -467,7 +495,7 @@ specials_arima <- new_specials(
 #' to [`stats::arima()`] and [`forecast::Arima()`]. While the parameterisations
 #' are equivalent, the coefficients for the constant/mean will differ.
 #'
-#' In fable, the parameterisation used is:
+#' In `fable`, the parameterisation used is:
 #'
 #' \deqn{(1-\phi_1B - \cdots - \phi_p B^p)(1-B)^d y_t = c + (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t}
 #'
@@ -479,9 +507,9 @@ specials_arima <- new_specials(
 #'
 #' @section Specials:
 #' 
-#' The _specials_ define the space over which `ARIMA` will search for the model that best fits the data. If the RHS of `formula` is left blank, the default search space is given by `pdq() + PDQ()`: that is, a model with candidate seasonal and nonseasonal terms, but no exogenous regressors. Note that a seasonal model requires at least 2 full seasons' worth of data; if this is not available, `ARIMA` will revert to a nonseasonal model with a warning.
+#' The _specials_ define the space over which `ARIMA` will search for the model that best fits the data. If the RHS of `formula` is left blank, the default search space is given by `pdq() + PDQ()`: that is, a model with candidate seasonal and nonseasonal terms, but no exogenous regressors. Note that a seasonal model requires at least 2 full seasons of data; if this is not available, `ARIMA` will revert to a nonseasonal model with a warning.
 #'
-#' To specify a model fully (avoid automatic selection), the intercept and `pdq()/PDQ()` values must be specified: for example `formula = response ~ 1 + pdq(1, 1, 1) + PDQ(1, 0, 0)`.
+#' To specify a model fully (avoid automatic selection), the intercept and `pdq()/PDQ()` values must be specified. For example, `formula = response ~ 1 + pdq(1, 1, 1) + PDQ(1, 0, 0)`.
 #' 
 #' \subsection{pdq}{
 #' The `pdq` special is used to specify non-seasonal components of the model.
@@ -496,12 +524,12 @@ specials_arima <- new_specials(
 #'   `q`      \tab The order of the non-seasonal moving average (MA) terms. If multiple values are provided, the one which minimises `ic` will be chosen. \cr
 #'   `p_init` \tab If `stepwise = TRUE`, `p_init` provides the initial value for `p` for the stepwise search procedure. \cr
 #'   `q_init` \tab If `stepwise = TRUE`, `q_init` provides the initial value for `q` for the stepwise search procedure. \cr
-#'   `fixed`  \tab A named list of fixed parameters for coefficients. The names identify the coefficient, beginning with either `ar` or `ma`, and then followed by the lag order. For example, `fixed = list(ar1 = 0.3, ma2 = 0)`.
+#'   `fixed`  \tab A named list of fixed parameters for coefficients. The names identify the coefficient, beginning with either `ar` or `ma`, followed by the lag order. For example, `fixed = list(ar1 = 0.3, ma2 = 0)`.
 #' }
 #' }
 #'
 #' \subsection{PDQ}{
-#' The `PDQ` special is used to specify seasonal components of the model. To force a nonseasonal fit, specify `PDQ(0, 0, 0)` in the RHS of the model formula. Note that simply omitting `PDQ` from the formula will _not_ result in a nonseasonal fit.
+#' The `PDQ` special is used to specify seasonal components of the model. To force a non-seasonal fit, specify `PDQ(0, 0, 0)` in the RHS of the model formula. Note that simply omitting `PDQ` from the formula will _not_ result in a non-seasonal fit.
 #' \preformatted{
 #' PDQ(P = 0:2, D = 0:1, Q = 0:2, period = NULL,
 #'     P_init = 1, Q_init = 1, fixed = list())
@@ -514,7 +542,7 @@ specials_arima <- new_specials(
 #'   `period` \tab The periodic nature of the seasonality. This can be either a number indicating the number of observations in each seasonal period, or text to indicate the duration of the seasonal window (for example, annual seasonality would be "1 year").  \cr
 #'   `P_init` \tab If `stepwise = TRUE`, `P_init` provides the initial value for `P` for the stepwise search procedure. \cr
 #'   `Q_init` \tab If `stepwise = TRUE`, `Q_init` provides the initial value for `Q` for the stepwise search procedure. \cr
-#'   `fixed`  \tab A named list of fixed parameters for coefficients. The names identify the coefficient, beginning with either `sar` or `sma`, and then followed by the lag order. For example, `fixed = list(sar1 = 0.1)`.
+#'   `fixed`  \tab A named list of fixed parameters for coefficients. The names identify the coefficient, beginning with either `sar` or `sma`, followed by the lag order. For example, `fixed = list(sar1 = 0.1)`.
 #' }
 #' }
 #'
@@ -554,22 +582,25 @@ specials_arima <- new_specials(
 #'   model(ARIMA(log(GDP) ~ Population))
 #' @importFrom stats model.matrix
 #' @export
-ARIMA <- function(formula, ic = c("aicc", "aic", "bic"), stepwise = TRUE, greedy = TRUE,
-                  approximation = NULL,
-                  order_constraint = p + q + P + Q <= 6 & (!constant | d + D < 2),
-                  unitroot_spec = unitroot_options(), ...) {
+ARIMA <- function(formula, ic = c("aicc", "aic", "bic"),
+                  selection_metric = function(x) x[[ic]],
+                  stepwise = TRUE, greedy = TRUE, approximation = NULL,
+                  order_constraint = p + q + P + Q <= 6 & (constant + d + D <= 2),
+                  unitroot_spec = unitroot_options(), trace = FALSE, ...) {
   ic <- match.arg(ic)
+  stopifnot(is.function(selection_metric))
   arima_model <- new_model_class("ARIMA",
     train = train_arima,
     specials = specials_arima, origin = NULL,
     check = all_tsbl_checks
   )
   new_model_definition(arima_model, !!enquo(formula),
-    ic = ic,
+    ic = ic, selection_metric = selection_metric,
     stepwise = stepwise, greedy = greedy,
     approximation = approximation,
     order_constraint = enexpr(order_constraint),
-    unitroot_spec = unitroot_spec, ...
+    unitroot_spec = unitroot_spec,
+    trace = trace, ...
   )
 }
 
@@ -592,12 +623,38 @@ fitted.ARIMA <- function(object, ...) {
   object$est[[".fitted"]]
 }
 
-#' Extract residuals values from a fable model
+#' @importFrom stats KalmanForecast KalmanRun makeARIMA
+#' @export
+hfitted.ARIMA <- function(object, h, ...) {
+  y <- object$est$.fitted+object$est$.resid
+  yx <- object$est$.regression_resid
+  # Get fitted model
+  mod <- object$model$model
+  # Reset model to initial state
+  mod <- makeARIMA(mod$phi, mod$theta, mod$Delta)
+  # Calculate regression component
+  xm <- y-yx
+  # mod_seq <- mod
+  fits <- rep_len(NA_real_, length(y))
+  
+  start <- length(mod$Delta) + 1
+  end <- length(yx) - h
+  idx <- if(start > end) integer(0L) else start:end
+  for(i in idx) {
+    fc_mod <- attr(KalmanRun(yx[seq_len(i)], mod, update = TRUE), "mod")
+    fits[i + h] <- KalmanForecast(h, fc_mod)$pred[h] + xm[i+h]
+    # mod_seq <- attr(KalmanRun(yx[i], mod_seq, update = TRUE), "mod")
+    # fits[i + h] <- KalmanForecast(h, mod_seq)$pred[h] + xm[i+h]
+  }
+  fits
+}
+
+#' Extract residuals from a fable model
 #'
 #' Extracts the residuals.
 #'
 #' @inheritParams forecast.ARIMA
-#' @param type The type of the residuals to extract.
+#' @param type The type of residuals to extract.
 #'
 #' @return A vector of fitted residuals.
 #'
@@ -687,7 +744,7 @@ report.ARIMA <- function(object, ...) {
 #' @inheritParams fabletools::forecast
 #' @param specials (passed by [`fabletools::forecast.mdl_df()`]).
 #' @param bootstrap If `TRUE`, then forecast distributions are computed using simulation with resampled errors.
-#' @param times The number of sample paths to use in estimating the forecast distribution when `boostrap = TRUE`.
+#' @param times The number of sample paths to use in estimating the forecast distribution when `bootstrap = TRUE`.
 #'
 #' @importFrom stats formula residuals
 #'
@@ -785,11 +842,11 @@ generate.ARIMA <- function(x, new_data, specials, bootstrap = FALSE, ...){
     }
   }
   
-  new_data %>% 
-    group_by_key() %>% 
-    transmute(".sim" := conditional_arima_sim(x$model, x$est$.regression_resid, !!sym(".innov"))) %>% 
-    dplyr::ungroup() %>% 
-    mutate(".sim" := as.numeric(!!sym(".sim") + xm))
+  new_data <- transmute(
+    group_by_key(new_data), 
+    ".sim" := conditional_arima_sim(x$model, x$est$.regression_resid, !!sym(".innov"))
+  )
+  mutate(dplyr::ungroup(new_data), ".sim" := as.numeric(!!sym(".sim") + xm))
 }
 
 # Version of stats::arima.sim which conditions on past observations
@@ -875,6 +932,11 @@ refit.ARIMA <- function(object, new_data, specials = NULL, reestimate = FALSE, .
     as.list(object$spec[c("p", "d", "q", "p", "q")])
   specials$PDQ[[1]][c("P", "D", "Q", "period", "P_init", "Q_init")] <-
     as.list(object$spec[c("P", "D", "Q", "period", "P", "Q")])
+  if(is.null(specials$xreg)) { 
+    specials$xreg <- list(list(xreg = NULL, constant = object$spec$constant))
+  } else {
+    specials$xreg[[1]]$constant <- object$spec$constant
+  }
   
   if (reestimate) {
     return(train_arima(new_data, specials, ...))
@@ -887,7 +949,7 @@ refit.ARIMA <- function(object, new_data, specials = NULL, reestimate = FALSE, .
 
 #' Interpolate missing values from a fable model
 #'
-#' Applies a model specific estimation technique to predict the values of missing values in a `tsibble`, and replace them.
+#' Applies a model-specific estimation technique to predict the values of missing values in a `tsibble`, and replace them.
 #'
 #' @inheritParams forecast.ARIMA
 #'
@@ -971,8 +1033,8 @@ arima_constant <- function(n, d, D, period) {
 #' strength (via [`feasts::feat_stl()`] seasonal_strength) being above the 0.64 
 #' threshold is used for determining seasonal required differences.
 #'
-#' @param ndiffs_alpha,nsdiffs_alpha The level for the test specified in the `pval` functions As long as `pval < alpha`, differences will be added.
-#' @param ndiffs_pvalue,nsdiffs_pvalue A function (or lambda expression) which returns the probability of the . As long as `pval < alpha`, differences will be added.
+#' @param ndiffs_alpha,nsdiffs_alpha The level for the test specified in the `pval` functions. As long as `pval < alpha`, differences will be added.
+#' @param ndiffs_pvalue,nsdiffs_pvalue A function (or lambda expression) that provides a p-value for the unit root test. As long as `pval < alpha`, differences will be added.
 #'
 #' For the function for the seasonal p-value, the seasonal period will be provided as the `.period` argument to this function.
 #' A vector of data to test is available as `.` or `.x`.
@@ -993,7 +1055,7 @@ ur_seasonal_strength <- function(threshold = 0.64){
     features <- feasts::feat_stl(x, .period)
     seas_strength <- grepl("^seasonal_strength_", names(features))
     if(!any(seas_strength)){
-      FALSE
+      TRUE
     } else{
       features[seas_strength] < threshold
     }

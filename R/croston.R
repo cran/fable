@@ -61,7 +61,7 @@
 #'
 #' Kourentzes, N. (2014) "On intermittent demand model optimisation and
 #' selection". \emph{International Journal of Production Economics}, \bold{156},
-#' 180-190. \url{http://dx.doi.org/10.1016/j.ijpe.2014.06.007}.
+#' 180-190. \doi{10.1016/j.ijpe.2014.06.007}.
 #'
 #' @examples
 #' library(tsibble)
@@ -158,7 +158,8 @@ train_croston <- function(.data, specials, opt_crit = "mse", type = "croston", .
   }
   if (is.null(interval$initial)) {
     interval$initial <- switch(interval$method, mean = mean(y_interval), naive = y_interval[1])
-    par_est[2] <- TRUE
+    # Only optimize if more than one feasible value
+    par_est[2] <- max(y_interval) > 1
   }
   if (is.null(demand$param)) {
     demand$param <- 0.05

@@ -36,6 +36,8 @@ Authors:
 Other contributors:
 \itemize{
   \item Gabriel Caceres (NNETAR implementation) [contributor]
+  \item Tim-Gunnar Hensel [contributor]
+  \item Timothy Hyndman [contributor]
 }
 
 }

@@ -6,7 +6,7 @@ train_ets <- function(.data, specials, opt_crit,
 
   # Rebuild `ets` arguments
   ets_spec <- specials[c("error", "trend", "season")]
-  ets_spec %>% map(function(.x) {
+  map(ets_spec, function(.x) {
     if (length(.x) > 1) {
       abort("Only one special of each type is allowed for ETS.")
     }
@@ -84,11 +84,11 @@ train_ets <- function(.data, specials, opt_crit,
   structure(
     list(
       par = tibble(term = names(best$par) %||% chr(), estimate = unname(best$par) %||% dbl()),
-      est = dplyr::ungroup(.data) %>%
-        mutate(
-          .fitted = best$fitted,
-          .resid = best$residuals
-        ),
+      est = mutate(
+        dplyr::ungroup(.data),
+        .fitted = best$fitted,
+        .resid = best$residuals
+      ),
       fit = tibble(
         sigma2 = sum(best$residuals^2, na.rm = TRUE) / (length(y) - length(best$par)),
         log_lik = best$loglik, AIC = best$aic, AICc = best$aicc, BIC = best$bic,
@@ -322,17 +322,6 @@ forecast.ETS <- function(object, new_data, specials = NULL, simulate = FALSE, bo
     sim <- map(seq_len(times), function(x) generate(object, new_data, times = times, bootstrap = bootstrap)[[".sim"]]) %>%
       transpose() %>%
       map(as.numeric)
-    pred <- .C(
-      "etsforecast",
-      as.double(laststate),
-      as.integer(object$spec$period),
-      as.integer(switch(trendtype, "N" = 0, "A" = 1, "M" = 2)),
-      as.integer(switch(seasontype, "N" = 0, "A" = 1, "M" = 2)),
-      as.double(ifelse(damped, object$par[["estimate"]][object$par[["term"]] == "phi"], 1)),
-      as.integer(NROW(new_data)),
-      as.double(numeric(NROW(new_data))),
-      PACKAGE = "fable"
-    )[[7]]
 
     distributional::dist_sample(sim)
   }
@@ -397,10 +386,10 @@ generate.ETS <- function(x, new_data, specials, bootstrap = FALSE, ...) {
   get_par <- function(par) {
     x$par$estimate[x$par$term == par]
   }
-
-  result <- new_data %>%
-    group_by_key() %>%
-    transmute(".sim" := .C(
+  
+  result <- transmute(
+    group_by_key(new_data),
+    ".sim" := .C(
       "etssimulate",
       as.double(initstate),
       as.integer(x$spec$period),
@@ -416,7 +405,7 @@ generate.ETS <- function(x, new_data, specials, bootstrap = FALSE, ...) {
       as.double(!!sym(".innov")),
       PACKAGE = "fable"
     )[[11]])
-
+  
   if (is.na(result[[".sim"]][1])) {
     stop("Problem with multiplicative damped trend")
   }
@@ -455,10 +444,7 @@ refit.ETS <- function(object, new_data, specials = NULL, reestimate = FALSE, rei
     }
   }
 
-  y <- new_data %>%
-    transmute(
-      !!parse_expr(measured_vars(object$est)[1])
-    )
+  y <- transmute(new_data, !!parse_expr(measured_vars(object$est)[1]))
   idx <- unclass(y)[[index_var(y)]]
   y <- unclass(y)[[measured_vars(y)]]
 
@@ -490,11 +476,11 @@ refit.ETS <- function(object, new_data, specials = NULL, reestimate = FALSE, rei
   structure(
     list(
       par = tibble(term = names(best$par) %||% chr(), estimate = unname(best$par) %||% dbl()),
-      est = new_data %>%
-        mutate(
-          .fitted = best$fitted,
-          .resid = best$residuals
-        ),
+      est = mutate(
+        new_data,
+        .fitted = best$fitted,
+        .resid = best$residuals
+      ),
       fit = tibble(
         sigma2 = sum(best$residuals^2, na.rm = TRUE) / (length(y) - length(best$par)),
         log_lik = best$loglik, AIC = best$aic, AICc = best$aicc, BIC = best$bic,
@@ -523,6 +509,36 @@ refit.ETS <- function(object, new_data, specials = NULL, reestimate = FALSE, rei
 #' @export
 fitted.ETS <- function(object, ...) {
   object$est[[".fitted"]]
+}
+
+#' @export
+hfitted.ETS <- function(object, h, ...) {
+  errortype <- object$spec$errortype
+  trendtype <- object$spec$trendtype
+  seasontype <- object$spec$seasontype
+  damped <- object$spec$damped
+  fc_class <- if (errortype == "A" && trendtype %in% c("A", "N") && seasontype %in% c("N", "A")) {
+    ets_fc_class1
+  } else if (errortype == "M" && trendtype %in% c("A", "N") && seasontype %in% c("N", "A")) {
+    ets_fc_class2
+  } else if (errortype == "M" && trendtype != "M" && seasontype == "M") {
+    ets_fc_class3
+  } else {
+    abort(sprintf("Multi-step fits for %s%s%s%s ETS models is not supported."),
+          errortype, trendtype, if(damped) "d" else "", seasontype)
+  }
+  
+  n <- nrow(object$states)-1
+  fits <- rep_len(NA_real_, n)
+  for(i in seq_len(n-h+1)) {
+    fits[i + h - 1] <- fc_class(
+      h = h,
+      last.state = as.numeric(object$states[i, measured_vars(object$states)]),
+      trendtype, seasontype, damped, object$spec$period, object$fit$sigma2,
+      set_names(object$par$estimate, object$par$term)
+    )$mu[h]
+  }
+  fits
 }
 
 #' @inherit residuals.ARIMA
@@ -601,11 +617,11 @@ components.ETS <- function(object, ...) {
     seasonalities <- list()
   }
 
-  est_vars <- object$est %>%
-    transmute(
-      !!sym(response),
-      remainder = !!sym(".resid")
-    )
+  est_vars <- transmute(
+    object$est,
+    !!sym(response),
+    remainder = !!sym(".resid")
+  )
 
   out <- left_join(out, est_vars, by = index_var(object$states))
   out <- select(out, intersect(c(expr_text(idx), response, "level", "slope", "season", "remainder"), colnames(out)))

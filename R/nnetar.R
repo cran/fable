@@ -1,5 +1,5 @@
 #' @importFrom stats ar complete.cases
-train_nnetar <- function(.data, specials, n_nodes, n_networks, scale_inputs, ...) {
+train_nnetar <- function(.data, specials, n_nodes, n_networks, scale_inputs, wts = NULL,...) {
   require_package("nnet")
 
   if (length(measured_vars(.data)) > 1) {
@@ -31,7 +31,12 @@ train_nnetar <- function(.data, specials, n_nodes, n_networks, scale_inputs, ...
     p <- 1
     P <- 0
   }
-  ## Check for constant data in xreg
+  # Check for insufficient data for seasonal lags
+  if (P > 0 && n < period * P + 2) {
+    warn("Series too short for seasonal lags")
+    P <- 0
+  }
+  # Check for constant data in xreg
   if (!is.null(xreg)) {
     xreg <- as.matrix(xreg)
     if (any(apply(xreg, 2, is.constant))) {
@@ -42,29 +47,32 @@ train_nnetar <- function(.data, specials, n_nodes, n_networks, scale_inputs, ...
 
   # Scale inputs
   y_scale <- xreg_scale <- NULL
-  if (scale_inputs) {
-    x <- scale(x, center = TRUE, scale = TRUE)
-    # y_scale <- tibble(
-    #   term = c("y_center", "y_scale"),
-    #   estimate = c(attr(x, "scaled:center"), attr(x, "scaled:scale"))
-    # )
-    y_scale <- list(
-      center = attr(x, "scaled:center"),
-      scale = attr(x, "scaled:scale")
-    )
-    x <- c(x)
-
-    if (!is.null(xreg)) {
-      xreg <- scale(xreg, center = TRUE, scale = TRUE)
-      # xreg_scale <- tibble(
-      #   term = c("xreg_center", "xreg_scale"),
-      #   estimate = c(attr(xreg, "scaled:center"), attr(xreg, "scaled:scale"))
-      # )
-      xreg_scale <- list(
-        center = attr(xreg, "scaled:center"),
-        scale = attr(xreg, "scaled:scale")
-      )
+  if (is.list(scale_inputs)) {
+    x <- (x - scale_inputs$y$center)/scale_inputs$y$scale
+    if(!is.null(xreg)){
+      xreg <- sweep(xreg, 2, scale_inputs$xreg$center, "-")
+      xreg <- sweep(xreg, 2, scale_inputs$xreg$scale, "/")
     }
+    scales <- scale_inputs
+    scale_inputs <- TRUE
+  } else {
+    if (scale_inputs) {
+      x <- scale(x, center = TRUE, scale = TRUE)
+      y_scale <- list(
+        center = attr(x, "scaled:center"),
+        scale = attr(x, "scaled:scale")
+      )
+      x <- c(x)
+  
+      if (!is.null(xreg)) {
+        xreg <- scale(xreg, center = TRUE, scale = TRUE)
+        xreg_scale <- list(
+          center = attr(xreg, "scaled:center"),
+          scale = attr(xreg, "scaled:scale")
+        )
+      }
+    }
+    scales <- list(y = y_scale, xreg = xreg_scale)
   }
 
   # Construct lagged matrix
@@ -109,21 +117,28 @@ train_nnetar <- function(.data, specials, n_nodes, n_networks, scale_inputs, ...
     abort("No data to fit (possibly due to missing values)")
   }
 
-  # Fit the nnet
-  nn_models <- map(
-    seq_len(n_networks),
-    function(.) wrap_nnet(x_lags, x, size = n_nodes, ...)
-  )
+  # Fit the nnet and consider the Wts argument for nnet::nnet() if provided: 
+  if (is.null(wts)) {
+    nn_models <- map(
+      seq_len(n_networks),
+      function(.) wrap_nnet(x_lags, x, size = n_nodes, ...)
+    )
+  } else {
+    maxnwts <- max(lengths(wts), na.rm = TRUE)
+    nn_models <- map(
+      wts, 
+      function(i) {
+        wrap_nnet(x = x_lags, y = x, size = n_nodes, MaxNWts = maxnwts, Wts = i, ...)
+      })
+  }
 
   # Calculate fitted values
-  pred <- map(nn_models, predict) %>%
-    transpose() %>%
-    map_dbl(function(x) mean(unlist(x)))
+  pred <- map_dbl(transpose(map(nn_models, predict)), function(x) mean(unlist(x)))
   fits <- rep(NA_real_, length(y))
   fits_idx <- c(rep(FALSE, maxlag), j)
   fits[fits_idx] <- pred
   if (scale_inputs) {
-    fits <- fits * y_scale$scale + y_scale$center
+    fits <- fits * scales$y$scale + scales$y$center
   }
   res <- y - fits
 
@@ -135,11 +150,8 @@ train_nnetar <- function(.data, specials, n_nodes, n_networks, scale_inputs, ...
       est = tibble(.fitted = fits, .resid = res),
       fit = tibble(sigma2 = stats::var(res, na.rm = TRUE)),
       spec = tibble(period = period, p = p, P = P, size = n_nodes, lags = list(lags)),
-      scales = list(y = y_scale, xreg = xreg_scale),
-      future = mutate(
-        new_data(.data, maxlag),
-        !!expr_text(model_lhs(self)) := utils::tail(x, maxlag)
-      )
+      scales = scales,
+      future = utils::tail(x, maxlag)
     ),
     class = "NNETAR"
   )
@@ -157,10 +169,6 @@ specials_nnetar <- new_specials(
       if (!missing(P) && P > 0) {
         warn("Non-seasonal data, ignoring seasonal lags")
       }
-      P <- 0
-    }
-    if (P > 0 && NROW(self$data) < period * P + 2) {
-      warn("Series too short for seasonal lags")
       P <- 0
     }
     as.list(environment())
@@ -276,7 +284,7 @@ forecast.NNETAR <- function(object, new_data, specials = NULL, simulate = TRUE, 
   # Extract model attributes
   lags <- object$spec$lags[[1]]
   maxlag <- max(lags)
-  future_lags <- rev(object$future[[measured_vars(object$future)]])
+  future_lags <- rev(object$future)
 
   # Compute forecast intervals
   if (!simulate) {
@@ -290,7 +298,6 @@ forecast.NNETAR <- function(object, new_data, specials = NULL, simulate = TRUE, 
     sim <- sim %>%
       transpose() %>%
       map(as.numeric)
-    se <- map_dbl(sim, stats::sd)
     distributional::dist_sample(sim)
   }
   else {
@@ -345,7 +352,7 @@ generate.NNETAR <- function(x, new_data, specials = NULL, bootstrap = FALSE, ...
         sigma <- sd(x$est[[".resid"]] / x$scales$y$scale, na.rm = TRUE)
       }
       else {
-        sigma <- x$fit$sigma
+        sigma <- sqrt(x$fit$sigma2)
       }
       new_data$.innov <- stats::rnorm(NROW(new_data), sd = sigma)
     }
@@ -359,7 +366,7 @@ generate.NNETAR <- function(x, new_data, specials = NULL, bootstrap = FALSE, ...
   # Extract model attributes
   lags <- x$spec$lags[[1]]
   maxlag <- max(lags)
-  future_lags <- rev(x$future[[measured_vars(x$future)]])
+  future_lags <- rev(x$future)
 
   sim_nnetar <- function(e) {
     path <- numeric(length(e))
@@ -380,9 +387,7 @@ generate.NNETAR <- function(x, new_data, specials = NULL, bootstrap = FALSE, ...
     path
   }
 
-  new_data %>%
-    group_by_key() %>%
-    transmute(".sim" := sim_nnetar(!!sym(".innov")))
+  transmute(group_by_key(new_data), ".sim" := sim_nnetar(!!sym(".innov")))
 }
 
 #' @inherit fitted.ARIMA
@@ -460,4 +465,58 @@ model_sum.NNETAR <- function(x) {
     x$spec$size,
     ifelse(P > 0, paste0("[", x$spec$period, "]"), "")
   )
+}
+
+#' Refit a NNETAR model 
+#'
+#' Applies a fitted NNETAR model to a new dataset.
+#'
+#' @inheritParams forecast.NNETAR
+#' @param reestimate If `TRUE`, the networks will be initialized with random 
+#' starting weights to suit the new data. If `FALSE`, for every network the best 
+#' individual set of weights found in the pre-estimation process is used as the 
+#' starting weight vector.     
+#'
+#' @examples
+#' lung_deaths_male <- as_tsibble(mdeaths)
+#' lung_deaths_female <- as_tsibble(fdeaths)
+#'
+#' fit <- lung_deaths_male %>%
+#'   model(NNETAR(value))
+#'
+#' report(fit)
+#'
+#' fit %>%
+#'   refit(new_data = lung_deaths_female, reestimate = FALSE) %>%
+#'   report()
+#' @return A refitted model.
+#'
+#' @importFrom stats formula residuals
+#' @export
+refit.NNETAR <- function(object, new_data, specials = NULL, reestimate = FALSE, ...) {
+  # Update data for re-evaluation
+  # update specials and size: 
+  specials$AR[[1]][c("p", "P", "period")] <- 
+    as.list(object$spec[c("p", "P", "period")])
+  
+  size <- object$spec[["size"]]
+  
+  # extract number of networks used: 
+  n_nets <- length(object$model)
+  
+  # check for scale_inputs:
+  scale_in <- if(is_empty(object$scales)) FALSE else object$scales
+
+  # return for reestimate = TRUE; i.e random assignment of weights:
+  if (reestimate) {
+    return(train_nnetar(new_data, specials, n_nodes = size, n_networks = n_nets, 
+                        scale_inputs = scale_in, ...))
+  }
+  
+  # extract best set of weights for every network: 
+  wts_list <- lapply(object$model, `[[`, "wts")
+  
+  out <- train_nnetar(new_data, specials, n_nodes = size, n_networks = n_nets,
+                      scale_inputs = scale_in, wts = wts_list, maxit = 0, ...)
+  out
 }

@@ -1,3 +1,23 @@
+# fable 0.3.1
+
+Small release to resolve check issues with the development and patched versions 
+of R. The release includes some minor improvements to the output consistency of
+initial states in `ETS()` models, the passing of arguments in `ARIMA()` models,
+and handling of missing values in `NNETAR()`.
+
+## Improvements
+
+* Display of ETS initial states now use a `state[t]` notation to describe the
+  state's position in time (#329, #261).
+* Allowed specifying `method` argument in `ARIMA()` (#330).
+* Improved handling of missing values in `NNETAR()` (#327).
+
+## Bug fixes
+
+* Fixed error with forecasting and simulating from `NNETAR()` estimated using
+  a short series (#326).
+* Fixed `AR()` fitted values not being re-scaled to match original data (#318).
+
 # fable 0.3.0
 
 The release of fabletools v0.3.0 introduced general support for computing h-step 

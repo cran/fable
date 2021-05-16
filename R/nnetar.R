@@ -77,14 +77,14 @@ train_nnetar <- function(.data, specials, n_nodes, n_networks, scale_inputs, wts
 
   # Construct lagged matrix
   if (is.null(p)) {
-    if (period > 1 && n > 2 * period) {
+    if (!any(is.na(x)) && period > 1 && n > 2 * period) {
       y_sa <- stats::stl(ts(x, frequency = period), s.window = 13)
       y_sa <- y_sa$time.series[, "trend"] + y_sa$time.series[, "remainder"]
     }
     else {
       y_sa <- x
     }
-    p <- max(length(ar(y_sa)$ar), 1)
+    p <- max(length(ar(y_sa, na.action=stats::na.pass)$ar), 1)
   }
   if (p >= n) {
     warn("Reducing number of lagged inputs due to short series")
@@ -96,6 +96,7 @@ train_nnetar <- function(.data, specials, n_nodes, n_networks, scale_inputs, wts
   }
 
   maxlag <- max(lags)
+  future_x <- utils::tail(x, maxlag)
   nlag <- length(lags)
   x_lags <- matrix(NA_real_, ncol = nlag, nrow = n - maxlag)
   for (i in 1:nlag) {
@@ -151,7 +152,7 @@ train_nnetar <- function(.data, specials, n_nodes, n_networks, scale_inputs, wts
       fit = tibble(sigma2 = stats::var(res, na.rm = TRUE)),
       spec = tibble(period = period, p = p, P = P, size = n_nodes, lags = list(lags)),
       scales = scales,
-      future = utils::tail(x, maxlag)
+      future = future_x
     ),
     class = "NNETAR"
   )

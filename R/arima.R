@@ -6,7 +6,7 @@ train_arima <- function(.data, specials,
                         stepwise = TRUE, greedy = TRUE, approximation = NULL,
                         order_constraint = p + q + P + Q <= 6 & (constant + d + D <= 2),
                         unitroot_spec = unitroot_options(), trace = FALSE,
-                        fixed = NULL, ...) {
+                        fixed = NULL, method = NULL, ...) {
   if (length(measured_vars(.data)) > 1) {
     abort("Only univariate responses are supported by ARIMA.")
   }
@@ -212,11 +212,22 @@ train_arima <- function(.data, specials,
   mostly_specified_msg <- "It looks like you're trying to fully specify your ARIMA model but have not said if a constant should be included.\nYou can include a constant using `ARIMA(y~1)` to the formula or exclude it by adding `ARIMA(y~0)`."
   model_opts <- expand.grid(p = pdq$p, d = pdq$d, q = pdq$q, P = PDQ$P, D = PDQ$D, Q = PDQ$Q, constant = constant)
   
-  if (is.null(approximation)) {
-    approximation <- ((length(x) > 150) || (period > 12)) && nrow(model_opts) > 1
+  if(is.null(method)){
+    if (is.null(approximation)) {
+      approximation <- ((length(x) > 150) || (period > 12)) && nrow(model_opts) > 1
+    }
+    if (approximation) {
+      method <- "CSS"
+    } else {
+      method <- "CSS-ML"
+    }
+  } else {
+    if(isTRUE(approximation)) warn("Estimating ARIMA models with approximation is not supported when `method` is specified.")
+    approximation <- FALSE
   }
-  if (approximation) {
-    method <- "CSS"
+  
+  # Compute offset for CSS to approximate ic values
+  if(method == "CSS") {
     offset <- with(
       stats::arima(y,
                    order = c(0, pdq$d, 0), xreg = xreg,
@@ -224,9 +235,8 @@ train_arima <- function(.data, specials,
       ),
       -2 * loglik - NROW(data) * log(sigma2)
     )
-  } else {
-    method <- "CSS-ML"
   }
+
   
   if (NROW(model_opts) > 1) {
     model_opts <- filter(model_opts, !!enexpr(order_constraint))
@@ -288,6 +298,9 @@ This is generally discouraged, consider removing the constant or reducing the nu
       }
 
       if (update_step) {
+        if(trace) {
+          cat("Search iteration complete: Current best fit is ", current, "\n")
+        }
         initial <- FALSE
         # Calculate new possible steps
         dist <- apply(model_opts, 1, function(x) sum((x - current)^2))
@@ -442,7 +455,9 @@ specials_arima <- new_specials(
       rhs = reduce(dots, function(.x, .y) call2("+", .x, .y))
     )
 
-    env$lag <- lag # Mask user defined lag to retain history when forecasting
+    # Mask user defined lag to retain history when forecasting
+    env <- env_bury(env, lag = lag)
+    
     xreg <- model.frame(model_formula, data = env, na.action = stats::na.pass)
     tm <- terms(xreg)
     constant <- as.logical(tm %@% "intercept")

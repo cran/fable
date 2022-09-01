@@ -64,6 +64,22 @@ train_arima <- function(.data, specials,
   else {
     xreg <- NULL
   }
+  
+  mostly_specified <- length(constant) == 2 && length(pdq$p) + length(pdq$d) + length(pdq$q) + length(PDQ$P) + length(PDQ$D) + length(PDQ$Q) == 6
+  mostly_specified_msg <- "It looks like you're trying to fully specify your ARIMA model but have not said if a constant should be included.\nYou can include a constant using `ARIMA(y~1)` to the formula or exclude it by adding `ARIMA(y~0)`."
+  model_opts <- expand.grid(p = pdq$p, d = pdq$d, q = pdq$q, P = PDQ$P, D = PDQ$D, Q = PDQ$Q, constant = constant)
+  
+  if (NROW(model_opts) > 1) {
+    model_opts <- filter(model_opts, !!enexpr(order_constraint))
+    if (NROW(model_opts) == 0) {
+      if (mostly_specified) warn(mostly_specified_msg)
+      abort("There are no ARIMA models to choose from after imposing the `order_constraint`, please consider allowing more models.")
+    }
+    wrap_arima <- possibly(quietly(stats::arima), NULL)
+  }
+  else {
+    wrap_arima <- stats::arima
+  }
 
   diff <- function(x, differences, ...) {
     if (differences == 0) {
@@ -73,52 +89,54 @@ train_arima <- function(.data, specials,
   }
 
   # Choose seasonal differencing
-  if (length(PDQ$D) > 1) {
+  if (length(seas_D <- unique(model_opts$D)) > 1) {
     require_package("feasts")
     # Valid xregs
 
     if (!is.null(xreg)) {
-      keep <- map_lgl(PDQ$D, function(.x) {
+      keep <- map_lgl(seas_D, function(.x) {
         if(.x*period >= nrow(xreg)) return(FALSE)
         diff_xreg <- diff(xreg, lag = period, differences = .x)
         !any(apply(diff_xreg, 2, is.constant))
       })
-      PDQ$D <- PDQ$D[keep]
+      seas_D <- seas_D[keep]
     }
-    PDQ$D <- unname(feasts::unitroot_nsdiffs(stats::na.contiguous(x),
+    seas_D <- unname(feasts::unitroot_nsdiffs(stats::na.contiguous(x),
       alpha = unitroot_spec$nsdiffs_alpha,
       unitroot_fn = unitroot_spec$nsdiffs_pvalue,
-      differences = PDQ$D, .period = period
+      differences = seas_D, .period = period
     ))
+    model_opts <- model_opts[model_opts$D == seas_D,]
   }
-  x <- diff(x, lag = period, differences = PDQ$D)
-  diff_xreg <- diff(xreg, lag = period, differences = PDQ$D)
-  if (length(pdq$d) > 1) {
+  x <- diff(x, lag = period, differences = seas_D)
+  diff_xreg <- diff(xreg, lag = period, differences = seas_D)
+  if (length(seas_d <- unique(model_opts$d)) > 1) {
     require_package("feasts")
 
     # Valid xregs
     if (!is.null(xreg)) {
-      keep <- map_lgl(pdq$d, function(.x) {
+      keep <- map_lgl(seas_d, function(.x) {
         if(.x >= nrow(diff_xreg)) return(FALSE)
         diff_xreg <- diff(diff_xreg, differences = .x)
         !any(apply(diff_xreg, 2, is.constant))
       })
-      pdq$d <- pdq$d[keep]
+      seas_d <- seas_d[keep]
     }
 
-    pdq$d <- unname(feasts::unitroot_ndiffs(stats::na.contiguous(x),
+    seas_d <- unname(feasts::unitroot_ndiffs(stats::na.contiguous(x),
       alpha = unitroot_spec$ndiffs_alpha,
       unitroot_fn = unitroot_spec$ndiffs_pvalue,
-      differences = pdq$d
+      differences = seas_d
     ))
+    model_opts <- model_opts[model_opts$d == seas_d,]
   }
 
   # Check number of differences selected
-  if (length(PDQ$D) != 1) abort("Could not find appropriate number of seasonal differences.")
-  if (length(pdq$d) != 1) abort("Could not find appropriate number of non-seasonal differences.")
-  if (PDQ$D >= 2) {
+  if (length(seas_D) != 1) abort("Could not find appropriate number of seasonal differences.")
+  if (length(seas_d) != 1) abort("Could not find appropriate number of non-seasonal differences.")
+  if (seas_D >= 2) {
     warn("Having more than one seasonal difference is not recommended. Please consider using only one seasonal difference.")
-  } else if (PDQ$D + pdq$d > 2) {
+  } else if (seas_D + seas_d > 2) {
     warn("Having 3 or more differencing operations is not recommended. Please consider reducing the total number of differences.")
   }
 
@@ -207,10 +225,6 @@ train_arima <- function(.data, specials,
     }
     sm
   }
-
-  mostly_specified <- length(constant) == 2 && length(pdq$p) + length(pdq$d) + length(pdq$q) + length(PDQ$P) + length(PDQ$D) + length(PDQ$Q) == 6
-  mostly_specified_msg <- "It looks like you're trying to fully specify your ARIMA model but have not said if a constant should be included.\nYou can include a constant using `ARIMA(y~1)` to the formula or exclude it by adding `ARIMA(y~0)`."
-  model_opts <- expand.grid(p = pdq$p, d = pdq$d, q = pdq$q, P = PDQ$P, D = PDQ$D, Q = PDQ$Q, constant = constant)
   
   if(is.null(method)){
     if (is.null(approximation)) {
@@ -230,26 +244,13 @@ train_arima <- function(.data, specials,
   if(method == "CSS") {
     offset <- with(
       stats::arima(y,
-                   order = c(0, pdq$d, 0), xreg = xreg,
+                   order = c(0, seas_d, 0), xreg = xreg,
                    include.mean = all(constant)
       ),
       -2 * loglik - NROW(data) * log(sigma2)
     )
   }
-
   
-  if (NROW(model_opts) > 1) {
-    model_opts <- filter(model_opts, !!enexpr(order_constraint))
-    if (NROW(model_opts) == 0) {
-      if (mostly_specified) warn(mostly_specified_msg)
-      abort("There are no ARIMA models to choose from after imposing the `order_constraint`, please consider allowing more models.")
-    }
-    wrap_arima <- possibly(quietly(stats::arima), NULL)
-  }
-  else {
-    wrap_arima <- stats::arima
-  }
-
   if (any((model_opts$d + model_opts$D > 1) & model_opts$constant)) {
     warn("Model specification induces a quadratic or higher order polynomial trend. 
 This is generally discouraged, consider removing the constant or reducing the number of differences.")
@@ -263,10 +264,10 @@ This is generally discouraged, consider removing the constant or reducing the nu
 
     # Initial 4 models
     initial_opts <- list(
-      start = c(pdq$p_init, pdq$d, pdq$q_init, PDQ$P_init, PDQ$D, PDQ$Q_init, constant[1]),
-      null = c(0, pdq$d, 0, 0, PDQ$D, 0, constant[1]),
-      ar = c(max(pdq$p) > 0, pdq$d, 0, max(PDQ$P) > 0, PDQ$D, 0, constant[1]),
-      ma = c(0, pdq$d, max(pdq$q) > 0, 0, PDQ$D, max(PDQ$Q) > 0, constant[1])
+      start = c(pdq$p_init, seas_d, pdq$q_init, PDQ$P_init, seas_D, PDQ$Q_init, constant[1]),
+      null = c(0, seas_d, 0, 0, seas_D, 0, constant[1]),
+      ar = c(max(pdq$p) > 0, seas_d, 0, max(PDQ$P) > 0, seas_D, 0, constant[1]),
+      ma = c(0, seas_d, max(pdq$q) > 0, 0, seas_D, max(PDQ$Q) > 0, constant[1])
     )
     step_order <- unique(stats::na.omit(match(initial_opts, lapply(split(model_opts, seq_len(NROW(model_opts))), as.numeric))))
     initial <- TRUE
@@ -298,9 +299,6 @@ This is generally discouraged, consider removing the constant or reducing the nu
       }
 
       if (update_step) {
-        if(trace) {
-          cat("Search iteration complete: Current best fit is ", current, "\n")
-        }
         initial <- FALSE
         # Calculate new possible steps
         dist <- apply(model_opts, 1, function(x) sum((x - current)^2))
@@ -316,7 +314,7 @@ This is generally discouraged, consider removing the constant or reducing the nu
   else {
     est_ic <- pmap_dbl(model_opts, compare_arima)
   }
-
+  
   if (approximation && !is.null(best$arma)) {
     if(trace) {
       cat("\n--- Re-estimating best models without approximation ---\n\n")
@@ -334,6 +332,8 @@ This is generally discouraged, consider removing the constant or reducing the nu
         break
       }
     }
+  } else {
+    mod_spec <- which.min(est_ic)
   }
 
   if (is.null(best)) {
@@ -363,15 +363,16 @@ This is generally discouraged, consider removing the constant or reducing the nu
   # Compute regression residuals
   reg_resid <- as.numeric(y)
   if (model_opts[which.min(est_ic), "constant"]) {
-    xreg <- cbind(xreg, constant = arima_constant(length(y), pdq$d, PDQ$D, period))
+    xreg <- cbind(xreg, constant = arima_constant(length(y), seas_d, seas_D, period))
   }
   if (!is.null(xreg)) {
     reg_resid <- reg_resid - xreg %*% as.matrix(best$coef[(sum(best$arma[1:4]) + 1):length(best$coef)])
   }
 
   # Output model
-  best_spec <- as_tibble(model_opts[which.min(est_ic),])
-  best_spec[["period"]] <- period
+  best_spec <- model_opts[mod_spec, ]
+  best_spec$period <- period
+    
   structure(
     list(
       par = 
@@ -397,6 +398,10 @@ This is generally discouraged, consider removing the constant or reducing the nu
         AIC = best$aic, AICc = best$aicc, BIC = best$bic,
         ar_roots = list(arroot), ma_roots = list(maroot)
       ),
+      tsp = list(
+        range = range(unclass(.data)[[index_var(.data)]]), 
+        interval = interval(.data)
+      ),
       spec = best_spec,
       model = best
     ),
@@ -408,8 +413,10 @@ specials_arima <- new_specials(
   pdq = function(p = 0:5, d = 0:2, q = 0:5,
                  p_init = 2, q_init = 2,
                  fixed = list()) {
-    p <- p[p <= floor(NROW(self$data) / 3)]
-    q <- q[q <= floor(NROW(self$data) / 3)]
+    if (self$stage %in% c("estimate", "refit")) {
+      p <- p[p <= floor(NROW(self$data) / 3)]
+      q <- q[q <= floor(NROW(self$data) / 3)]
+    }
     p_init <- p[which.min(abs(p - p_init))]
     q_init <- q[which.min(abs(q - q_init))]
     if(!all(grepl("^(ma|ar)\\d+", names(fixed)))){
@@ -429,9 +436,12 @@ specials_arima <- new_specials(
       D <- 0
       Q <- 0
     }
-    else {
+    else if (self$stage %in% c("estimate", "refit")) {
       P <- P[P <= floor(NROW(self$data) / 3 / period)]
       Q <- Q[Q <= floor(NROW(self$data) / 3 / period)]
+      if(length(P) == 0 || length(Q) == 0) {
+        abort("Not enough data to estimate a model with those options of P and Q. Consider allowing smaller values of P and Q to be selected.")
+      }
     }
     P_init <- P[which.min(abs(P - P_init))]
     Q_init <- Q[which.min(abs(Q - Q_init))]
@@ -696,10 +706,16 @@ residuals.ARIMA <- function(object, type = c("innovation", "regression"), ...) {
 #'
 #' Construct a single row summary of the ARIMA model.
 #'
-#' Contains the variance of residuals (`sigma2`), the log-likelihood (`log_lik`),
-#' information criterion (`AIC`, `AICc`, `BIC`) and the characteristic roots
-#' (`ar_roots` and `ma_roots`).
-#'
+#' @format A data frame with 1 row, with columns:
+#' \describe{
+#'   \item{sigma2}{The unbiased variance of residuals. Calculated as `sum(residuals^2) / (num_observations - num_pararameters + 1)`}
+#'   \item{log_lik}{The log-likelihood}
+#'   \item{AIC}{Akaike information criterion}
+#'   \item{AICc}{Akaike information criterion, corrected for small sample sizes}
+#'   \item{BIC}{Bayesian information criterion}
+#'   \item{ar_roots, ma_roots}{The model's characteristic roots}
+#' }
+#' 
 #' @inheritParams generics::glance
 #'
 #' @return A one row tibble summarising the model's fit.
@@ -773,6 +789,22 @@ report.ARIMA <- function(object, ...) {
 #' @export
 forecast.ARIMA <- function(object, new_data = NULL, specials = NULL,
                            bootstrap = FALSE, times = 5000, ...) {
+  # Check position of new_data in model history
+  if(inherits_any(object$tsp$range, c("yearweek", "yearmonth", "yearquarter"))) {
+    fc_start <- object$tsp$range[2]+round(as.numeric(diff(object$tsp$range)+1)/nrow(object$est), 6)
+  } else {
+    # Try to use difftime
+    interval <- unclass(object$tsp$interval)
+    interval <- Filter(function(x) x!=0, interval)
+    time_unit <- switch(names(interval), day = "days", hour = "hours", minute = "mins", second = "secs")
+    if(!is.null(time_unit)) interval[[1]] <- as.difftime(interval[[1]], units = time_unit)
+    fc_start <- object$tsp$range[2] + interval[[1]]
+  }
+  
+  if (unclass(new_data)[[index_var(new_data)]][1] != fc_start) {
+    abort("Forecasts from an ARIMA model must start one step beyond the end of the trained data.")
+  }
+  
   if (bootstrap) {
     sim <- map(seq_len(times), function(x) generate(object, new_data, specials, bootstrap = TRUE)[[".sim"]]) %>%
       transpose() %>%
@@ -794,7 +826,7 @@ forecast.ARIMA <- function(object, new_data = NULL, specials = NULL,
     xreg <- if (is.null(xreg)) {
       matrix(intercept, dimnames = list(NULL, "constant"))
     } else {
-      xreg <- cbind(xreg, intercept = intercept)
+      cbind(xreg, intercept = intercept)
     }
   }
   # Produce predictions
@@ -961,6 +993,92 @@ refit.ARIMA <- function(object, new_data, specials = NULL, reestimate = FALSE, .
   out$par <- object$par
   out
 }
+
+# #' @export
+# stream.ARIMA <- function(object, new_data, specials = NULL, ...){
+#   # Check position of new_data in model history
+#   if(inherits_any(object$tsp$range, c("yearweek", "yearmonth", "yearquarter"))) {
+#     stream_start <- object$tsp$range[2]+round((diff(object$tsp$range)+1)/nrow(object$est), 6)
+#   } else {
+#     # Try to use difftime
+#     interval <- unclass(object$tsp$interval)
+#     interval <- Filter(function(x) x!=0, interval)
+#     time_unit <- switch(names(interval), day = "days", hour = "hours", minute = "mins", second = "secs")
+#     stream_start <- object$tsp$range[2] + as.difftime(interval[[1]], units = time_unit)
+#   }
+#   if (unclass(new_data)[[index_var(new_data)]][1] != stream_start) {
+#     abort("Streaming to an ARIMA model must start one step beyond the end of the trained data.")
+#   }
+#   
+#   y <- unclass(new_data)[[measured_vars(new_data)]]
+#   coef <- object$model$coef
+#   
+#   xreg <- specials$xreg[[1]]$xreg
+#   # Drop unused rank deficient xreg
+#   xreg <- xreg[,colnames(xreg) %in% names(object$model$coef), drop = FALSE]
+#   
+#   if (object$spec$constant) {
+#     intercept <- arima_constant(
+#       NROW(object$est) + NROW(new_data),
+#       object$spec$d, object$spec$D,
+#       object$spec$period
+#     )[NROW(object$est) + seq_len(NROW(new_data))]
+#     
+#     xreg <- if (is.null(xreg)) {
+#       matrix(intercept, dimnames = list(NULL, "constant"))
+#     } else {
+#       xreg <- cbind(xreg, intercept = intercept)
+#     }
+#   }
+#   
+#   if (ncol(xreg)%||%0 > 0) {
+#     reg_resid <- y - xreg %*% coef[narma + (1L:ncxreg)]
+#   } else {
+#     reg_resid <- y
+#   }
+#   
+#   mod <- object$model$model
+#   
+#   old_n.used <- sum(!is.na(object$est$.regression_resid)) - length(mod$Delta)
+#   new_n.used <- sum(!is.na(reg_resid)) - length(mod$Delta)
+#   n.used <- old_n.used + new_n.used + length(mod$Delta)
+# 
+#   fit <- KalmanRun(reg_resid, mod, nit = -1, update = TRUE)
+#   fit$values[["Lik"]]
+#   resid <- c(object$est$.resid, fit$resid)
+#   
+#   nstar <- nrow(object$est) + length(y) - object$spec$d - object$spec$D * object$spec$period
+#   npar <- length(object$model$coef[object$model$mask]) + 1
+#   
+#   # 2 * n.used * res$value
+#   old_val <- (object$model$loglik/(-0.5) - old_n.used - old_n.used * log(2 * pi))/(2*old_n.used)
+#   new_val <- fit$values[["Lik"]]
+#   
+#   old_sumlog <- (old_val*2 - log(mean(object$est$.resid^2, na.rm=TRUE)))*sum(!is.na(object$est$.resid))
+#   new_sumlog <- (fit$values[["Lik"]]*2 - log(mean(fit$resid^2, na.rm = TRUE)))*sum(!is.na(fit$resid))
+#   n_known <- sum(!is.na(resid))
+#   
+#   lik <- 0.5*(log(sum(resid^2)/n.used) + (old_sumlog + new_sumlog)/n.used)
+#   
+#   # 0.5 * (log(s2) + res[2L]/res[3L])
+#   
+#   value <- 2 * n.used * lik + n.used + n.used * log(2 * pi)
+#   object$log_lik <- -0.5*lik
+#   object$AIC <- aic <- value + 2 * sum(object$model$mask) + 2
+#   object$BIC <- aic + npar * (log(nstar) - 2)
+#   object$AICc <- aic + 2 * npar * (npar + 1) / (nstar - npar - 1)
+#   # Adjust residual variance to be unbiased
+#   fit$sigma2 <- sum(resid^2, na.rm = TRUE) / (nstar - npar + 1)
+#   
+#   object$model$model <- attr(fit, "mod")
+#   object$est <- tibble(
+#     .fitted = c(object$est$.fitted, y - fit$resid),
+#     .resid = resid, 
+#     .regression_resid = c(object$est$.regression_resid, reg_resid)
+#   )
+#   object$tsp$range[2] <- max(new_data[[index_var(new_data)]])
+#   object
+# }
 
 #' Interpolate missing values from a fable model
 #'

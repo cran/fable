@@ -1,3 +1,30 @@
+# fable 0.3.2
+
+## Improvements
+
+* Documentation improvements.
+* Added `approx_normal` argument to `forecast(<TSLM>)`. This allows you to
+  optionally return forecasts from the more appropriate Student's T distribution
+  instead of approximating to a Normal distribution. The default behaviour 
+  remains the same, which is to provide approximate Normal distribution 
+  forecasts which are nicer to work with in model combination and reconciliation
+  (#343).
+* `ETS()` will now ignore the smoothing parameter's range when specific 
+  parameter value is given (#317).
+* Modified initial parameter values for `ETS()` when bounds = "admissible".
+* Updated RW forecasts to use an unbiased estimate of sigma2 (#368).
+
+## Bug fixes
+
+* Fixed issue with characteristic equation test for admissibility of ETS 
+  parameters (#341).
+* Fixed ARIMA selecting differences that don't satisfy the `order_constraint` 
+  (#360).
+* Fixed issue with forecasting ARIMA models with intercept and exogenous 
+  regressors.
+* Fixed issue with VAR models not storing lagged regressor data for forecasting.
+
+
 # fable 0.3.1
 
 Small release to resolve check issues with the development and patched versions 

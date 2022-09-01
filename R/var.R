@@ -95,7 +95,10 @@ specials_var <- new_specials(
     env <- map(enquos(...), get_env)
     env[map_lgl(env, compose(is_empty, env_parents))] <- NULL
     env <- if (!is_empty(env)) get_env(env[[1]]) else base_env()
-
+    
+    # Mask user defined lag to retain history when forecasting
+    env <- env_bury(env, lag = lag)
+    
     constants <- map_lgl(dots, inherits, "numeric")
     constant_given <- any(map_lgl(dots[constants], `%in%`, -1:1))
 
@@ -141,7 +144,7 @@ specials_var <- new_specials(
 #' }
 #'
 #' \subsection{xreg}{
-#' Exogenous regressors can be included in an ARIMA model without explicitly using the `xreg()` special. Common exogenous regressor specials as specified in [`common_xregs`] can also be used. These regressors are handled using [stats::model.frame()], and so interactions and other functionality behaves similarly to [stats::lm()].
+#' Exogenous regressors can be included in an VAR model without explicitly using the `xreg()` special. Common exogenous regressor specials as specified in [`common_xregs`] can also be used. These regressors are handled using [stats::model.frame()], and so interactions and other functionality behaves similarly to [stats::lm()].
 #'
 #' The inclusion of a constant in the model follows the similar rules to [`stats::lm()`], where including `1` will add a constant and `0` or `-1` will remove the constant. If left out, the inclusion of a constant will be determined by minimising `ic`.
 #'

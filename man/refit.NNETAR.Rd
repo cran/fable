@@ -7,9 +7,9 @@
 \method{refit}{NNETAR}(object, new_data, specials = NULL, reestimate = FALSE, ...)
 }
 \arguments{
-\item{object}{The time series model used to produce the forecasts}
+\item{object}{A model for which forecasts are required.}
 
-\item{new_data}{A \code{tsibble} containing future information used to forecast.}
+\item{new_data}{A tsibble containing the time points and exogenous regressors to produce forecasts for.}
 
 \item{specials}{(passed by \code{\link[fabletools:forecast]{fabletools::forecast.mdl_df()}}).}
 
@@ -18,7 +18,7 @@ starting weights to suit the new data. If \code{FALSE}, for every network the be
 individual set of weights found in the pre-estimation process is used as the
 starting weight vector.}
 
-\item{...}{Additional arguments for forecast model methods.}
+\item{...}{Other arguments passed to methods}
 }
 \value{
 A refitted model.

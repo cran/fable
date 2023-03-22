@@ -7,16 +7,16 @@
 \method{refit}{RW}(object, new_data, specials = NULL, reestimate = FALSE, ...)
 }
 \arguments{
-\item{object}{The time series model used to produce the forecasts}
+\item{object}{A model for which forecasts are required.}
 
-\item{new_data}{A \code{tsibble} containing future information used to forecast.}
+\item{new_data}{A tsibble containing the time points and exogenous regressors to produce forecasts for.}
 
 \item{specials}{(passed by \code{\link[fabletools:forecast]{fabletools::forecast.mdl_df()}}).}
 
 \item{reestimate}{If \code{TRUE}, the lag walk model will be re-estimated
 to suit the new data.}
 
-\item{...}{Additional arguments for forecast model methods.}
+\item{...}{Other arguments passed to methods}
 }
 \description{
 Applies a fitted random walk model to a new dataset.

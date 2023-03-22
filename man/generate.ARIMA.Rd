@@ -9,13 +9,13 @@
 \arguments{
 \item{x}{A fitted model.}
 
-\item{new_data}{A \code{tsibble} containing future information used to forecast.}
+\item{new_data}{A tsibble containing the time points and exogenous regressors to produce forecasts for.}
 
 \item{specials}{(passed by \code{\link[fabletools:forecast]{fabletools::forecast.mdl_df()}}).}
 
 \item{bootstrap}{If \code{TRUE}, then forecast distributions are computed using simulation with resampled errors.}
 
-\item{...}{Additional arguments for forecast model methods.}
+\item{...}{Other arguments passed to methods}
 }
 \description{
 Simulates future paths from a dataset using a fitted model. Innovations are

@@ -1,3 +1,9 @@
+# fable 0.3.4
+
+## Improvements
+
+* Documentation improvements.
+
 # fable 0.3.3
 
 Small patch to resolve CRAN check issues.

@@ -528,19 +528,20 @@ models do not require any additional data.</p>
 <span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a>fc</span>
 <span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a><span class="co">#&gt; # A fable: 160 x 7 [1Q]</span></span>
 <span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a><span class="co">#&gt; # Key:     Region, State, Purpose, .model [8]</span></span>
-<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a><span class="co">#&gt;    Region    State    Purpose  .model Quarter        Trips .mean</span></span>
-<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a><span class="co">#&gt;    &lt;chr&gt;     &lt;chr&gt;    &lt;chr&gt;    &lt;chr&gt;    &lt;qtr&gt;       &lt;dist&gt; &lt;dbl&gt;</span></span>
-<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a><span class="co">#&gt;  1 Melbourne Victoria Business ets    2018 Q1 N(619, 3533)  619.</span></span>
-<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a><span class="co">#&gt;  2 Melbourne Victoria Business ets    2018 Q2 N(709, 3766)  709.</span></span>
-<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a><span class="co">#&gt;  3 Melbourne Victoria Business ets    2018 Q3 N(738, 4042)  738.</span></span>
-<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a><span class="co">#&gt;  4 Melbourne Victoria Business ets    2018 Q4 N(713, 4364)  713.</span></span>
-<span id="cb10-12"><a href="#cb10-12" tabindex="-1"></a><span class="co">#&gt;  5 Melbourne Victoria Business ets    2019 Q1 N(664, 4735)  664.</span></span>
-<span id="cb10-13"><a href="#cb10-13" tabindex="-1"></a><span class="co">#&gt;  6 Melbourne Victoria Business ets    2019 Q2 N(755, 5159)  755.</span></span>
-<span id="cb10-14"><a href="#cb10-14" tabindex="-1"></a><span class="co">#&gt;  7 Melbourne Victoria Business ets    2019 Q3 N(784, 5640)  784.</span></span>
-<span id="cb10-15"><a href="#cb10-15" tabindex="-1"></a><span class="co">#&gt;  8 Melbourne Victoria Business ets    2019 Q4 N(759, 6181)  759.</span></span>
-<span id="cb10-16"><a href="#cb10-16" tabindex="-1"></a><span class="co">#&gt;  9 Melbourne Victoria Business ets    2020 Q1 N(710, 6786)  710.</span></span>
-<span id="cb10-17"><a href="#cb10-17" tabindex="-1"></a><span class="co">#&gt; 10 Melbourne Victoria Business ets    2020 Q2 N(800, 7458)  800.</span></span>
-<span id="cb10-18"><a href="#cb10-18" tabindex="-1"></a><span class="co">#&gt; # i 150 more rows</span></span></code></pre></div>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a><span class="co">#&gt;    Region    State    Purpose  .model Quarter</span></span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a><span class="co">#&gt;    &lt;chr&gt;     &lt;chr&gt;    &lt;chr&gt;    &lt;chr&gt;    &lt;qtr&gt;</span></span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a><span class="co">#&gt;  1 Melbourne Victoria Business ets    2018 Q1</span></span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a><span class="co">#&gt;  2 Melbourne Victoria Business ets    2018 Q2</span></span>
+<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a><span class="co">#&gt;  3 Melbourne Victoria Business ets    2018 Q3</span></span>
+<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a><span class="co">#&gt;  4 Melbourne Victoria Business ets    2018 Q4</span></span>
+<span id="cb10-12"><a href="#cb10-12" tabindex="-1"></a><span class="co">#&gt;  5 Melbourne Victoria Business ets    2019 Q1</span></span>
+<span id="cb10-13"><a href="#cb10-13" tabindex="-1"></a><span class="co">#&gt;  6 Melbourne Victoria Business ets    2019 Q2</span></span>
+<span id="cb10-14"><a href="#cb10-14" tabindex="-1"></a><span class="co">#&gt;  7 Melbourne Victoria Business ets    2019 Q3</span></span>
+<span id="cb10-15"><a href="#cb10-15" tabindex="-1"></a><span class="co">#&gt;  8 Melbourne Victoria Business ets    2019 Q4</span></span>
+<span id="cb10-16"><a href="#cb10-16" tabindex="-1"></a><span class="co">#&gt;  9 Melbourne Victoria Business ets    2020 Q1</span></span>
+<span id="cb10-17"><a href="#cb10-17" tabindex="-1"></a><span class="co">#&gt; 10 Melbourne Victoria Business ets    2020 Q2</span></span>
+<span id="cb10-18"><a href="#cb10-18" tabindex="-1"></a><span class="co">#&gt; # i 150 more rows</span></span>
+<span id="cb10-19"><a href="#cb10-19" tabindex="-1"></a><span class="co">#&gt; # i 2 more variables: Trips &lt;dist&gt;, .mean &lt;dbl&gt;</span></span></code></pre></div>
 <p>The resulting forecasts are contained in a “fable” (forecast table),
 and both point forecasts and forecast distributions are available in the
 table for the next five years. Confidence intervals can be extracted
@@ -555,25 +556,25 @@ which allows you to extract multiple intervals at once.</p>
 <span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="fu">hilo</span>(<span class="at">level =</span> <span class="fu">c</span>(<span class="dv">80</span>, <span class="dv">95</span>))</span>
 <span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a><span class="co">#&gt; # A tsibble: 160 x 9 [1Q]</span></span>
 <span id="cb11-4"><a href="#cb11-4" tabindex="-1"></a><span class="co">#&gt; # Key:       Region, State, Purpose, .model [8]</span></span>
-<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a><span class="co">#&gt;    Region State Purpose .model Quarter        Trips .mean                  `80%`</span></span>
-<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a><span class="co">#&gt;    &lt;chr&gt;  &lt;chr&gt; &lt;chr&gt;   &lt;chr&gt;    &lt;qtr&gt;       &lt;dist&gt; &lt;dbl&gt;                 &lt;hilo&gt;</span></span>
-<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a><span class="co">#&gt;  1 Melbo~ Vict~ Busine~ ets    2018 Q1 N(619, 3533)  619. [542.3864, 694.7363]80</span></span>
-<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a><span class="co">#&gt;  2 Melbo~ Vict~ Busine~ ets    2018 Q2 N(709, 3766)  709. [630.4443, 787.7426]80</span></span>
-<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a><span class="co">#&gt;  3 Melbo~ Vict~ Busine~ ets    2018 Q3 N(738, 4042)  738. [656.9891, 819.9425]80</span></span>
-<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a><span class="co">#&gt;  4 Melbo~ Vict~ Busine~ ets    2018 Q4 N(713, 4364)  713. [628.7879, 798.1010]80</span></span>
-<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a><span class="co">#&gt;  5 Melbo~ Vict~ Busine~ ets    2019 Q1 N(664, 4735)  664. [575.8480, 752.2196]80</span></span>
-<span id="cb11-12"><a href="#cb11-12" tabindex="-1"></a><span class="co">#&gt;  6 Melbo~ Vict~ Busine~ ets    2019 Q2 N(755, 5159)  755. [662.5141, 846.6176]80</span></span>
-<span id="cb11-13"><a href="#cb11-13" tabindex="-1"></a><span class="co">#&gt;  7 Melbo~ Vict~ Busine~ ets    2019 Q3 N(784, 5640)  784. [687.6922, 880.1843]80</span></span>
-<span id="cb11-14"><a href="#cb11-14" tabindex="-1"></a><span class="co">#&gt;  8 Melbo~ Vict~ Busine~ ets    2019 Q4 N(759, 6181)  759. [658.1603, 859.6735]80</span></span>
-<span id="cb11-15"><a href="#cb11-15" tabindex="-1"></a><span class="co">#&gt;  9 Melbo~ Vict~ Busine~ ets    2020 Q1 N(710, 6786)  710. [603.9336, 815.0789]80</span></span>
-<span id="cb11-16"><a href="#cb11-16" tabindex="-1"></a><span class="co">#&gt; 10 Melbo~ Vict~ Busine~ ets    2020 Q2 N(800, 7458)  800. [689.3620, 910.7146]80</span></span>
+<span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a><span class="co">#&gt;    Region    State    Purpose  .model Quarter</span></span>
+<span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a><span class="co">#&gt;    &lt;chr&gt;     &lt;chr&gt;    &lt;chr&gt;    &lt;chr&gt;    &lt;qtr&gt;</span></span>
+<span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a><span class="co">#&gt;  1 Melbourne Victoria Business ets    2018 Q1</span></span>
+<span id="cb11-8"><a href="#cb11-8" tabindex="-1"></a><span class="co">#&gt;  2 Melbourne Victoria Business ets    2018 Q2</span></span>
+<span id="cb11-9"><a href="#cb11-9" tabindex="-1"></a><span class="co">#&gt;  3 Melbourne Victoria Business ets    2018 Q3</span></span>
+<span id="cb11-10"><a href="#cb11-10" tabindex="-1"></a><span class="co">#&gt;  4 Melbourne Victoria Business ets    2018 Q4</span></span>
+<span id="cb11-11"><a href="#cb11-11" tabindex="-1"></a><span class="co">#&gt;  5 Melbourne Victoria Business ets    2019 Q1</span></span>
+<span id="cb11-12"><a href="#cb11-12" tabindex="-1"></a><span class="co">#&gt;  6 Melbourne Victoria Business ets    2019 Q2</span></span>
+<span id="cb11-13"><a href="#cb11-13" tabindex="-1"></a><span class="co">#&gt;  7 Melbourne Victoria Business ets    2019 Q3</span></span>
+<span id="cb11-14"><a href="#cb11-14" tabindex="-1"></a><span class="co">#&gt;  8 Melbourne Victoria Business ets    2019 Q4</span></span>
+<span id="cb11-15"><a href="#cb11-15" tabindex="-1"></a><span class="co">#&gt;  9 Melbourne Victoria Business ets    2020 Q1</span></span>
+<span id="cb11-16"><a href="#cb11-16" tabindex="-1"></a><span class="co">#&gt; 10 Melbourne Victoria Business ets    2020 Q2</span></span>
 <span id="cb11-17"><a href="#cb11-17" tabindex="-1"></a><span class="co">#&gt; # i 150 more rows</span></span>
-<span id="cb11-18"><a href="#cb11-18" tabindex="-1"></a><span class="co">#&gt; # i 1 more variable: `95%` &lt;hilo&gt;</span></span></code></pre></div>
+<span id="cb11-18"><a href="#cb11-18" tabindex="-1"></a><span class="co">#&gt; # i 4 more variables: Trips &lt;dist&gt;, .mean &lt;dbl&gt;, `80%` &lt;hilo&gt;, `95%` &lt;hilo&gt;</span></span></code></pre></div>
 <!--
 These intervals can also be unnested if you're looking to obtain the numerical values (`.lower`, `.upper`, and `level`).
 
 
-```r
+``` r
 library(tidyr)
 fc %>%
   mutate(interval = hilo(.distribution, 80)) %>%

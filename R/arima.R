@@ -515,12 +515,14 @@ specials_arima <- new_specials(
 #' @param ... Further arguments for [`stats::arima()`]
 #'
 #' @section Parameterisation:
+
+#' The fable `ARIMA()` function uses an alternative parameterisation of 
+#' constants to [`stats::arima()`] and [`forecast::Arima()`]. While the 
+#' parameterisations are equivalent, the coefficients for the constant/mean 
+#' will differ.
 #'
-#' The fable `ARIMA()` function uses an alternate parameterisation of constants
-#' to [`stats::arima()`] and [`forecast::Arima()`]. While the parameterisations
-#' are equivalent, the coefficients for the constant/mean will differ.
-#'
-#' In `fable`, the parameterisation used is:
+#' In `fable`, if there are no exogenous regressors, the parameterisation used 
+#' is:
 #'
 #' \deqn{(1-\phi_1B - \cdots - \phi_p B^p)(1-B)^d y_t = c + (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t}
 #'
@@ -530,6 +532,22 @@ specials_arima <- new_specials(
 #'
 #' where \eqn{\mu} is the mean of \eqn{(1-B)^d y_t} and \eqn{c = \mu(1-\phi_1 - \cdots - \phi_p )}.
 #'
+#' If there are exogenous regressors, `fable` uses the same parameterisation as
+#' used in stats and forecast. That is, it fits a regression with ARIMA(p,d,q) 
+#' errors:
+#'
+#' \deqn{y_t = c + \beta' x_t + z_t}
+#'
+#' where \eqn{\beta} is a vector of regression coefficients, \eqn{x_t} is
+#' a vector of exogenous regressors at time \eqn{t}, and \eqn{z_t} is an
+#' ARIMA(p,d,q) error process:
+#' 
+#' \deqn{(1-\phi_1B - \cdots - \phi_p B^p)(1-B)^d z_t = (1 + \theta_1 B + \cdots + \theta_q B^q)\varepsilon_t}
+#' 
+#' For details of the estimation algorithm, see the
+#' \code{\link[stats]{arima}} function in the stats package.
+#'
+
 #' @section Specials:
 #' 
 #' The _specials_ define the space over which `ARIMA` will search for the model that best fits the data. If the RHS of `formula` is left blank, the default search space is given by `pdq() + PDQ()`: that is, a model with candidate seasonal and nonseasonal terms, but no exogenous regressors. Note that a seasonal model requires at least 2 full seasons of data; if this is not available, `ARIMA` will revert to a nonseasonal model with a warning.
@@ -895,6 +913,33 @@ generate.ARIMA <- function(x, new_data, specials, bootstrap = FALSE, ...){
     ".sim" := conditional_arima_sim(!!x$model, !!x$est$.regression_resid, !!sym(".innov"))
   )
   mutate(dplyr::ungroup(new_data), ".sim" := as.numeric(!!sym(".sim") + !!xm))
+}
+
+#' Calculate impulse responses from a fable model
+#'
+#' @inheritParams forecast.ETS
+#' @param x A fitted model.
+#'
+#' @export
+IRF.ARIMA <- function(x, new_data, specials, ...) {
+  # Zero out data
+  x$est$.regression_resid[seq_along(x$est$.regression_resid)] <- 0
+  x$model$residuals[seq_along(x$model$residuals)] <- 0
+  
+  # Remove regressors
+  x$model$coef[!grepl("^s?(ma|ar)\\d+$", names(x$model$coef))] <- 0
+  
+  # Add shock
+  if (".impulse" %in% names(new_data)) { 
+    names(new_data)[names(new_data) == ".impulse"] <- ".innov"
+  } else {
+    new_data$.innov <- c(1, rep.int(0, nrow(new_data)-1))
+  }
+  
+  irf <- generate(x, new_data, specials)
+  irf$.irf <- irf$.sim
+  irf$.innov <- irf$.sim <- NULL
+  irf
 }
 
 # Version of stats::arima.sim which conditions on past observations

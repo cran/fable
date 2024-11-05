@@ -2,13 +2,13 @@
 train_vecm <- function(.data, specials, ic, ...) {
   # Get args
   p <- specials$AR[[1]]$p
-  
+
   # Get response variables
   y <- invoke(cbind, unclass(.data)[measured_vars(.data)])
   
   # Get xreg
   constant <- specials$xreg[[1]]$constant
-  xreg <- specials$xreg[[1]]$xreg
+  xreg <- Reduce(cbind, specials$xreg[[1]]$xreg) # Convert from df to matrix
   
   # Choose best model
   reduce(transpose(expand.grid(p = p, constant = constant)),
@@ -29,11 +29,11 @@ estimate_vecm <- function(y, p, sr_xreg, constant, r, ...) {
   }
   
   dy <- diff(y)
-  if (p > 0) {
+  # if (p > 0) {
     # y <- y[-seq_len(p), , drop = FALSE]
     # dy <- dy[-seq_len(p), , drop = FALSE]
-    sr_xreg <- sr_xreg[-seq_len(p + 1), , drop = FALSE]
-  }
+  # }
+  sr_xreg <- sr_xreg[-seq_len(p + 1), , drop = FALSE]
   
   y_embed <- stats::embed(y, dimension = p + 1)
   dy_embed <- stats::embed(dy, dimension = p + 1)
@@ -390,7 +390,7 @@ generate.VECM <- function(x, new_data, specials, ...){
       ect <- t(y_lag[1,]) %*% beta %*% coef[seq_len(r),]
       
       # Short-run dynamics
-      st <- t(Z)%*%coef[-seq_len(r),]
+      st <- c(Z) %*% coef[-seq_len(r),]
       
       .sim[i, ] <- y_lag[1,] + ect + st + .innov[i,]
       y_lag <- rbind(.sim[i, , drop = FALSE], y_lag)[seq_len(p + 1), , drop = FALSE]

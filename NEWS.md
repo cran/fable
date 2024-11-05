@@ -1,3 +1,10 @@
+# fable 0.4.1
+
+## Bug fixes
+
+* Fix indexing error of short-run exogenous regressors in the `VECM()` model.
+* Fix `generate()` method for `VECM()` models producing array errors.
+
 # fable 0.4.0
 
 ## New features
